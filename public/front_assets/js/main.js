@@ -66,10 +66,15 @@ AOS.init({
 	once: true
 });
 
-document.querySelector('.hamburger').addEventListener('click', function() {
+var __navHamburger = document.querySelector('.hamburger');
+if (__navHamburger) {
+  __navHamburger.addEventListener('click', function() {
     const navLinks = document.querySelector('.nav-links');
-    navLinks.style.display = (navLinks.style.display === 'flex') ? 'none' : 'flex';
-});
+    if (navLinks) {
+      navLinks.style.display = (navLinks.style.display === 'flex') ? 'none' : 'flex';
+    }
+  });
+}
 // dropdown
 function toggleDropdown(id) {
     const dropdownElement = document.getElementById(id);

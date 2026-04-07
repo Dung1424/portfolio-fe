@@ -1,7 +1,6 @@
-<script setup>
-import HomePage from '~/components/HomePage.vue'
-
+<script setup lang="ts">
 definePageMeta({ name: 'Index' })
+useSiteSeo({ title: 'Discover' })
 </script>
 
 <template>
