@@ -17,7 +17,22 @@ export default defineNuxtConfig({
     '@ant-design-vue/nuxt'
   ],
 
-  ssr: false,
+  /** Bật SSR cho SEO; khu vực chỉ-client (auth + dashboard) tắt SSR qua routeRules */
+  ssr: true,
+
+  routeRules: {
+    '/login': { ssr: false },
+    '/register': { ssr: false },
+    '/myPhotos': { ssr: false },
+    '/myGallery': { ssr: false },
+    '/addGallery': { ssr: false },
+    '/addPhotos': { ssr: false },
+    '/editGallery/**': { ssr: false },
+    '/changePassword': { ssr: false },
+    '/like': { ssr: false },
+    '/listUserBlock': { ssr: false },
+    '/galleryDetails/**': { ssr: false }
+  },
 
   devtools: {
     enabled: true
@@ -26,12 +41,33 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
 
   alias: {
-    '@assets': resolve(__dirname, 'public/front_assets')
+    '@assets': resolve(__dirname, 'public/front_assets'),
+    '@features': resolve(__dirname, 'features')
   },
+
+  components: [
+    { path: '~/features/auth/components', pathPrefix: false },
+    { path: '~/features/home/components', pathPrefix: false },
+    { path: '~/features/account/components', pathPrefix: false },
+    { path: '~/features/photo/components', pathPrefix: false },
+    { path: '~/features/gallery/components', pathPrefix: false },
+    { path: '~/features/blog/components', pathPrefix: false },
+    { path: '~/features/contact/components', pathPrefix: false },
+    { path: '~/features/search/components', pathPrefix: false },
+    { path: '~/features/shared/components', pathPrefix: false },
+    { path: '~/features/profile/components', pathPrefix: false },
+    { path: '~/features/booking/components', pathPrefix: false },
+    { path: '~/features/hotel/components', pathPrefix: false }
+  ],
 
   runtimeConfig: {
     public: {
-      apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000'
+      apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000',
+      siteName: process.env.NUXT_PUBLIC_SITE_NAME || 'MyPortfolio',
+      siteDescription:
+        process.env.NUXT_PUBLIC_SITE_DESCRIPTION
+        || 'Discover photography, galleries, and photographers.',
+      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || ''
     }
   },
 

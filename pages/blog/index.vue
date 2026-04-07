@@ -1,7 +1,6 @@
-<script setup>
-import Blog from '~/components/Blog.vue'
-
+<script setup lang="ts">
 definePageMeta({ name: 'Blog' })
+useSiteSeo({ title: 'Blog' })
 </script>
 
 <template>

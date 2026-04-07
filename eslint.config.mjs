@@ -4,7 +4,12 @@ import withNuxt from './.nuxt/eslint.config.mjs'
 export default withNuxt(
   // Legacy Vue (migrated from Laravel): 4-space + semicolons — tránh hàng nghìn cảnh báo stylistic
   {
-    files: ['components/**/*.vue'],
+    files: [
+      'features/**/*.vue',
+      'layouts/**/*.vue',
+      'pages/**/*.vue',
+      'app.vue'
+    ],
     rules: {
       '@stylistic/indent': 'off',
       '@stylistic/semi': 'off',

@@ -1,0 +1,438 @@
+<template>
+    <div class="my-photo-page">
+                <div class="content-layout">
+                    <Sidebar />
+                    <main>
+                        <div class="gallery-details">
+                            <button class="back-button" @click="goBack">
+                                <i class="fas fa-arrow-left"></i>
+                            </button>
+                            <div class="header" v-if="gallery">
+                                <h1 class="gallery-title">{{ gallery.galleries_name }}</h1>
+                                <div class="user-info">
+                                    <span class="gallery-user">{{ gallery.galleries_description }}</span>
+                                    <button class="edit-button" @click="goToEditGallery(gallery.galleries_code)">
+                                        <i class="fa-solid fa-pencil"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-if="gallery && gallery.photo.length === 0" class="empty-gallery">
+                                <h2>Add photos to this Gallery</h2>
+                                <p>Curate inspirational photos, or tell a story with your own photos.</p>
+                                <button class="add-photo-button" @click="goToAddPhoto">
+                                    Add Photos
+                                </button>
+                            </div>
+                            <div class="gallery-image-container" v-else-if="gallery">
+                                <div class="gallery-images">
+                                    <div v-for="photo in gallery.photo"
+                                         :key="photo.id"
+                                         class="photo-item">
+                                        <div class="photo-overlay">
+                                            <NuxtLink :to="{ name: 'PhotoDetail', params: { token: photo.photo_token } }">
+                                                <img :src="photo.image_url" :alt="photo.title" class="photo-image" />
+                                            </NuxtLink>
+                                            <div class="photo-details">
+                                                <img :src="photo.user.profile_picture || '/images/imageUserDefault.png'" alt="User Avatar" class="user-avatar" />
+                                                <span class="user-name2">{{ photo.user.username || 'Unknown User' }}</span>
+                                                <span class="icon-heart2" @click="toggleLike(photo)">
+                                                    <i :class="['fas', photo.liked ? 'fa-heart liked' : 'fa-heart']"></i>
+                                                </span>
+                                                <span class="icon-heart2" @click="showDeletePhotoConfirm(photo)">
+                                                    <i class="fa-solid fa-trash-can"></i>
+                                                </span>
+
+                                                <button
+                                                    class="btn-options"
+                                                    @click.stop="toggleDropdown('dropdown-' + photo.id, $event)"
+                                                    :class="{'active': activeDropdown === 'dropdown-' + photo.id}"
+                                                >
+                                                    <i class="fa-solid fa-ellipsis"></i>
+                                                </button>
+                                            </div>
+                                            <div v-if="activeDropdown === 'dropdown-' + photo.id" class="dropdown-content show" @click.stop>
+                                                <ul>
+                                                    <li @click="openAddToGalleryModal(photo.id)">
+                                                        <i class="fa-solid fa-plus"></i> Add to Gallery
+                                                    </li>
+                                                    <li>
+                                                        <i class="fa-solid fa-flag"></i> Report this photo
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            </div>
+
+    <AddToGalleryModal
+        :is-visible="showAddToGallery"
+        :photo-id="selectedPhotoId"
+        @close="closeAddToGalleryModal"
+    />
+</template>
+
+<script>
+import Sidebar from './Sidebar.vue'
+import AddToGalleryModal from '~/features/shared/components/AddToGalleryModal.vue'
+import { accountService } from '~/features/account/services/account.api.js'
+import '@assets/css/account.css';
+import { Modal, notification } from 'ant-design-vue';
+import { useLikeStore } from '~/stores/likeStore';
+
+export default {
+    name: 'GalleryDetails',
+    components: {
+        Sidebar,
+        AddToGalleryModal,
+    },
+    data() {
+        return {
+            gallery: {
+                photo: []
+            },
+            activeDropdown: null,
+            showAddToGallery: false,
+            selectedPhotoId: null,
+        };
+    },
+    async mounted() {
+        const likeStore = useLikeStore();
+        await likeStore.fetchLikedPhotos();
+
+        const galleries_code = this.$route.params.galleries_code;
+        await this.fetchGalleryDetails(galleries_code);
+        this.updateLikedState();
+    },
+    methods: {
+        goBack() {
+            this.$router.push('/myGallery');
+        },
+        goToEditGallery(galleries_code) {
+            this.$router.push(`/editGallery/${galleries_code}`);
+        },
+        toggleDropdown(id) {
+            this.activeDropdown = this.activeDropdown === id ? null : id;
+        },
+        async fetchGalleryDetails(galleries_code) {
+            try {
+                const response = await accountService.fetchGalleryDetails(galleries_code, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}` // Nếu cần thiết
+                    }
+                });
+                this.gallery = response.data.data;
+            } catch (error) {
+                console.error('Failed to fetch gallery details:', error);
+            }
+        },
+        showDeletePhotoConfirm(photo) {
+            Modal.confirm({
+                title: 'Are you sure you want to delete this photo?',
+                content: 'This action cannot be undone.',
+                onOk: () => this.deletePhotoFromGallery(photo),
+                onCancel() {
+                    console.log('Delete canceled');
+                },
+            });
+        },
+        async deletePhotoFromGallery(photo) {
+            try {
+                const galleries_code = this.$route.params.galleries_code;
+                await accountService.deletePhotoFromGallery(galleries_code, photo.id, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    },
+                });
+
+                // Xóa ảnh khỏi danh sách gallery
+                this.gallery.photo = this.gallery.photo.filter(p => p.id !== photo.id);
+
+                notification.success({
+                    message: 'Success',
+                    description: 'Photo removed from gallery successfully!',
+                });
+            } catch (error) {
+                console.error('Error deleting photo:', error);
+                notification.error({
+                    message: 'Error',
+                    description: 'Failed to delete the photo. Please try again.',
+                });
+            }
+        },
+        goToAddPhoto() {
+            this.$router.push('/');
+        },
+        openAddToGalleryModal(photoId) {
+            this.selectedPhotoId = photoId;
+            this.showAddToGallery = true; // Mở modal
+        },
+        closeAddToGalleryModal() {
+            this.showAddToGallery = false; // Đóng modal
+        },
+        async toggleLike(photo) {
+            const photo_id = photo.id;
+            const photo_user_id = photo.user.id;
+            const likeStore = useLikeStore();
+
+            try {
+                console.log(`Liking photo with ID: ${photo_id}`);
+                if (photo.liked) {
+                    await likeStore.unlikePhoto(photo_id);
+                } else {
+                    await likeStore.likePhoto(photo_id, photo_user_id);
+                }
+                photo.liked = !photo.liked;
+            } catch (error) {
+                console.error('Failed to toggle like:', error);
+                notification.error({
+                    message: 'Error',
+                    description: 'Failed to toggle like. Please try again.',
+                });
+            }
+        },
+        updateLikedState() {
+            const likeStore = useLikeStore();
+            this.gallery.photo.forEach(photo => {
+                photo.liked = likeStore.likedPhotos.includes(photo.id);
+            });
+        },
+    },
+};
+</script>
+
+<style scoped>
+main {
+    flex: 1;
+    padding-left: 0;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.icon-heart2:hover {
+    cursor: pointer;
+}
+
+.icon-heart2 .fa-heart.liked {
+    color: #ff5a5f; /* Màu khi đã like */
+}
+.empty-gallery {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 300px;
+    height: 100%;
+    text-align: center;
+    color: #555;
+}
+
+.empty-gallery h2 {
+    font-size: 24px;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.empty-gallery p {
+    font-size: 16px;
+    margin-bottom: 20px;
+    color: #777;
+    text-align: center;
+    max-width: 500px;
+}
+
+.add-photo-button {
+    padding: 10px 20px;
+    background-color: #1890ff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.add-photo-button:hover {
+    background-color: #1677cc;
+}
+
+.my-photo-page {
+    display: flex;
+    padding: 20px;
+    background-color: #ffffff;
+}
+.back-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 20px;
+    margin-right: 1000px;
+}
+.content-layout {
+    flex: 1;
+    display: flex;
+}
+
+.gallery-details {
+    flex: 1;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.gallery-title {
+    font-size: 24px;
+    margin: 0;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    border-bottom: none;
+}
+
+.gallery-user {
+    margin-right: 10px;
+    margin-bottom: 19px;
+}
+
+.edit-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+
+}
+
+.gallery-image-container {
+    overflow-y: auto;
+    max-height: calc(100vh - 100px); /* Điều chỉnh 150px theo thiết kế */
+    width: 100%;
+}
+
+.gallery-images {
+    display: flex; /* Sử dụng flex để xếp hình ảnh theo hàng */
+    flex-wrap: wrap; /* Cho phép hình ảnh xuống dòng */
+}
+
+.gallery-images img {
+    width: 250px; /* Kích thước hình ảnh */
+    height: 180px;
+    margin: 5px; /* Khoảng cách giữa các hình ảnh */
+    border-radius: 8px;
+}
+.photo-item {
+    position: relative;
+    width: 250px;
+    margin: 5px;
+}
+
+.photo-overlay {
+    position: relative;
+    cursor: pointer;
+}
+
+.photo-overlay:hover .photo-details {
+    opacity: 1;
+    visibility: visible;
+}
+
+.photo-details {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    color: white;
+    display: flex;
+    align-items: center;
+    padding: 5px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+.photo-details .user-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    margin-right: 10px;
+}
+
+.photo-details .user-name2 {
+    font-size: 14px;
+    color: white;
+    margin-right: auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+
+.icon-heart2, .icon-dots2 {
+    font-size: 18px;
+    margin-left: 10px;
+}
+.btn-options {
+    background: none;
+    border: none;
+    color: gray;
+    cursor: pointer;
+    font-size: 20px;
+    margin-left: 10px;
+}
+.btn-options.active i {
+    color: whitesmoke;
+    background-color: #1890ff;
+    border-radius: 50%;
+    padding: 5px;
+}
+.create-gallery-button:focus,
+.btn-options:focus {
+    outline: none;
+}
+
+.dropdown-content {
+    margin-left: 60px;
+}
+.dropdown-content ul {
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+}
+
+.dropdown-content li {
+    padding: 15px 15px 15px 25px;
+    display: flex;
+    align-items: center;
+    color: #222222;
+    white-space: nowrap;
+    z-index: 1000;
+}
+
+.dropdown-content li:hover {
+    color: whitesmoke; /* Màu chữ khi hover */
+    background-color: #1890ff; /* Màu nền khi hover */
+}
+
+.dropdown-content li i {
+    margin-right: 8px;
+}
+
+.dropdown-content li:hover i {
+    color: whitesmoke;
+    background-color: #1890ff;
+}
+</style>
