@@ -1,7 +1,7 @@
 import type { AsyncDataOptions } from '#app'
 
 /**
- * useAsyncData — mặc định `server: false` khi handler dùng localStorage / axios client plugin.
+ * useAsyncData — mặc định `server: false` khi handler dùng localStorage / token axios (client).
  * Gọi API chỉ cần trên server: truyền `{ server: true }` (hoặc bỏ default bằng cách override).
  */
 export function useApiAsyncData<T>(
