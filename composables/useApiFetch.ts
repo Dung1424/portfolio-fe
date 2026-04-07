@@ -1,6 +1,5 @@
 /**
- * $fetch đã gắn base URL API + Bearer token (client).
- * Dùng dần thay axios cho request mới; axios + plugin vẫn hoạt động song song.
+ * $fetch kèm base URL API + Bearer (client). Dùng tùy chọn; services/stores chính dùng axios + plugin.
  */
 export function useApiFetch() {
   const config = useRuntimeConfig()
