@@ -1,50 +1,90 @@
 <template>
-    <div class="py-1 bg-black">
-                <div class="container">
-                    <div class="row no-gutters d-flex align-items-start align-items-center px-md-0">
-                        <div class="col-lg-12 d-block">
-                            <div class="row d-flex">
+    <div
+        class="min-h-screen bg-[#f7f8fa] font-sans text-zinc-900 antialiased [font-family:ui-sans-serif,system-ui,sans-serif]"
+    >
+        <div class="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 pb-16 pt-10 sm:px-6">
+            <div
+                class="rounded-2xl border border-neutral-200/80 bg-white p-8 shadow-[0_2px_16px_rgba(0,0,0,0.08)] ring-1 ring-black/5 sm:p-10"
+            >
+                <h2 class="mb-6 text-center text-xl font-bold tracking-tight text-[#222] sm:text-2xl">Sign In</h2>
+                <form class="space-y-4" @submit.prevent="handleLogin">
+                    <div
+                        v-if="errorMessage"
+                        class="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-left text-sm text-red-700"
+                    >
+                        {{ errorMessage }}
+                    </div>
 
-                            </div>
+                    <div class="space-y-1.5 text-left">
+                        <label for="email" class="block text-sm font-medium text-zinc-700">Email</label>
+                        <div class="relative">
+                            <i
+                                class="fas fa-envelope pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-zinc-400"
+                            />
+                            <input
+                                id="email"
+                                v-model="email"
+                                type="email"
+                                required
+                                autofocus
+                                class="w-full rounded-lg border border-neutral-200 bg-white py-2.5 pl-9 pr-3 text-sm text-zinc-900 shadow-sm outline-none transition placeholder:text-zinc-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                            />
                         </div>
                     </div>
-                </div>
-            </div>
-            <!-- END nav -->
-            <div class="login-container">
-                <div class="login-box">
-                    <h2>Sign In</h2>
-                    <form @submit.prevent="handleLogin">
-                        <div v-if="errorMessage" style="color: red; margin-bottom: 15px;">
-                            {{ errorMessage }}
-                        </div>
 
-                        <div class="input-group">
-                            <label for="email">Email:</label>
-                            <i class="fas fa-envelope input-icon"></i>
-                            <input type="email" id="email" v-model="email" required autofocus>
+                    <div class="space-y-1.5 text-left">
+                        <label for="password" class="block text-sm font-medium text-zinc-700">Password</label>
+                        <div class="relative">
+                            <i
+                                class="fas fa-lock pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-zinc-400"
+                            />
+                            <input
+                                id="password"
+                                v-model="password"
+                                :type="showPassword ? 'text' : 'password'"
+                                required
+                                autocomplete="current-password"
+                                class="w-full rounded-lg border border-neutral-200 bg-white py-2.5 pl-9 pr-10 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                            />
+                            <button
+                                type="button"
+                                tabindex="-1"
+                                class="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
+                                :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                                @click="showPassword = !showPassword"
+                            >
+                                <i
+                                    class="fas text-sm"
+                                    :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"
+                                    aria-hidden="true"
+                                />
+                            </button>
                         </div>
-
-                        <div class="input-group">
-                            <label for="password">Password:</label>
-                            <i class="fas fa-lock input-icon"></i>
-                            <input type="password" id="password" v-model="password" required>
-                        </div>
-
-                        <div style="margin-top:20px;" class="remember-password">
-                            <label><input type="checkbox">Remember Me</label>
-                            <a href="#">Forget Password</a>
-                        </div>
-                        <button type="submit" class="btn btn-primary py-3 px-5">Login</button>
-                    </form>
-
-                    <div class="create-account">
-                        <NuxtLink :to="'/register'" class="create-account">
-                            <p>Create A New Account? <span style="color:#007BFF;">Sign Up</span></p>
-                        </NuxtLink>
                     </div>
-                </div>
+
+                    <div class="flex items-center justify-between gap-3 pt-1 text-sm">
+                        <label class="flex cursor-pointer items-center gap-2 text-zinc-600">
+                            <input type="checkbox" class="h-4 w-4 rounded border-neutral-300 text-blue-600 accent-blue-600" />
+                            Remember me
+                        </label>
+                        <a href="#" class="shrink-0 text-blue-600 hover:underline">Forgot password?</a>
+                    </div>
+
+                    <button
+                        type="submit"
+                        class="mt-2 w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                    >
+                        Login
+                    </button>
+                </form>
+
+                <p class="mt-8 text-center text-sm text-zinc-600">
+                    Create a new account?
+                    <NuxtLink to="/register" class="font-semibold text-blue-600 hover:underline">Sign up</NuxtLink>
+                </p>
             </div>
+        </div>
+    </div>
 </template>
 <script>
 import { authService } from '~/features/auth/services/auth.api.js'
@@ -56,6 +96,7 @@ export default {
         return {
             email: '',
             password: '',
+            showPassword: false,
             errorMessage: '',
         };
     },
@@ -65,8 +106,8 @@ export default {
             notification.success({
                 message: "Success",
                 description: successMessage,
-                placement: "topRight", // Hiển thị góc trên bên phải
-                duration: 3, // Thời gian hiển thị (3 giây)
+                placement: "topRight",
+                duration: 3,
             });
             localStorage.removeItem("successMessage");
         }
@@ -79,11 +120,9 @@ export default {
                     password: this.password,
                 });
 
-                // Lưu token vào localStorage
                 localStorage.setItem('token', response.data.token);
                 localStorage.setItem('refresh_token', response.data.refresh_token);
 
-                // Điều hướng tới route được trả về
                 window.location.href = response.data.route;
             } catch (error) {
                 console.error(error);
@@ -93,95 +132,3 @@ export default {
     }
 }
 </script>
-<style scoped>
-.login-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100%;
-    margin-top: 50px;
-    margin-bottom: 70px;
-}
-
-.login-box {
-    background-color: #fff;
-    padding: 40px;
-    border-radius: 5px;
-    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
-    text-align: center;
-    width: 450px;
-    margin: 20px;
-}
-
-.login-box h2 {
-    margin-bottom: 20px;
-    color: #333;
-}
-
-.input-group {
-    position: relative;
-    margin-bottom: 15px;
-    text-align: left;
-} .input-group input {
-      width: 100%;
-      padding: 8px;
-      padding-left: 30px;
-      border: 1px solid #ccc;
-      border-radius: 3px;
-  }
-
-.input-group .input-icon {
-    position: absolute;
-    left: 8px;
-    top: 60%;
-}
-
-.remember-password {
-    font-size: 14px;
-    font-weight: 500;
-    margin: -15px 0 15px;
-    display: flex;
-    justify-content: space-between;
-}
-
-.remember-password label input {
-    accent-color: #fff;
-    margin-right: 3px;
-}
-.remember-password a {
-    text-decoration: none;
-}
-
-.remember-password a:hover {
-    text-decoration: underline;
-}
-
-.create-account {
-    font-size: 14.5px;
-    text-align: center;
-    margin: 25px;
-}
-
-.create-account p a {
-    color: #fff;
-    font-weight: 600;
-    text-decoration: none;
-}
-
-.create-account p a:hover {
-    text-decoration: underline;
-}
-button {
-    padding: 10px 20px;
-    background-color: #007bff;
-    color: #fff;
-    border: none;
-    border-radius: 15px;
-    cursor: pointer;
-    width: 100%;
-}
-
-button:hover {
-    background-color: #0056b3;
-}
-</style>

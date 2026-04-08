@@ -1,5 +1,66 @@
 @import "tailwindcss";
 
+/*
+ * 500px-style skeleton: khung xám + shimmer (`.skeleton-shimmer`).
+ * Khi nào dùng skeleton vs spinner tải thêm: `composables/useSkeletonPlaceholder.ts`
+ */
+/**
+ * Shimmer: animate `background-position` on the box itself (ổn định với Tailwind v4 + Vite).
+ * Pseudo `::after` + transform đôi khi không chạy hoặc khó thấy sau khi bundle.
+ */
+@keyframes skeleton-shimmer-bg {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: rgb(210 210 214);
+  background-image: linear-gradient(
+    105deg,
+    rgb(210 210 214) 0%,
+    rgb(210 210 214) 28%,
+    rgb(255 255 255 / 0.35) 40%,
+    rgb(255 255 255 / 0.85) 50%,
+    rgb(255 255 255 / 0.35) 60%,
+    rgb(210 210 214) 72%,
+    rgb(210 210 214) 100%
+  );
+  background-size: 220% 100%;
+  background-position: 200% 0;
+  animation: skeleton-shimmer-bg 1.65s ease-in-out infinite;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer {
+    animation: none;
+    background-image: none;
+    background-color: rgb(218 218 222);
+  }
+}
+
+/* Fade khi thay skeleton ↔ nội dung (Transition name="skeleton-cross") */
+.skeleton-cross-enter-active,
+.skeleton-cross-leave-active {
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.skeleton-cross-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.skeleton-cross-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
 @theme static {
   /* Portfolio template (style.css) — dùng dần cho migrate Tailwind */
   --font-portfolio-body: "Inconsolata", ui-monospace, monospace;

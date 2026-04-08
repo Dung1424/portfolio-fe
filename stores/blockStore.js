@@ -12,6 +12,9 @@ export const useBlockStore = defineStore('block', {
   actions: {
     // Lấy danh sách những người bị chặn
     async fetchBlockedUsers() {
+      if (typeof localStorage === 'undefined') {
+        return
+      }
       const token = localStorage.getItem('token')
 
       try {
@@ -19,11 +22,20 @@ export const useBlockStore = defineStore('block', {
           headers: { Authorization: `Bearer ${token}` }
         })
 
+        const raw = response.data
+        const users = Array.isArray(raw) ? raw : (raw?.data ?? [])
+        if (!Array.isArray(users)) {
+          console.error('getBlockedUsers: expected array, got', raw)
+          this.blockedUsers = []
+          this.blockedUsersFullInfo = []
+          return
+        }
+
         // Lưu danh sách ID của những người bị chặn
-        this.blockedUsers = response.data.map(user => user.id) || []
+        this.blockedUsers = users.map(user => user.id)
 
         // Lưu toàn bộ thông tin người dùng bị chặn
-        this.blockedUsersFullInfo = response.data || []
+        this.blockedUsersFullInfo = users
       } catch (error) {
         console.error('Error fetching blocked users:', error)
       }

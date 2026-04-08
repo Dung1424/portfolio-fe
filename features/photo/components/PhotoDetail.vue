@@ -9,8 +9,8 @@
             <div v-else class="min-h-screen bg-[#f7f8fa] font-sans text-zinc-900 antialiased [font-family:ui-sans-serif,system-ui,sans-serif]">
                 <div class="mx-auto w-full max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
                     <div class="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
-                        <!-- Cột trái: không bọc panel xám riêng — trùng màu nền page -->
-                        <div class="min-w-0 space-y-8 lg:col-span-9" data-aos="fade-up">
+                        <!-- Cột trái: mobile — pb để không khuất thanh action cố định -->
+                        <div class="min-w-0 space-y-8 max-lg:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] lg:col-span-9">
                             <!-- Ảnh chính -->
                             <div
                                 class="group relative overflow-hidden rounded-2xl bg-[#111] shadow-[0_2px_16px_rgba(0,0,0,0.08)] ring-1 ring-black/5"
@@ -30,6 +30,11 @@
                                 >
                                     <i class="fa-solid fa-up-right-and-down-left-from-center text-xs"></i>
                                 </div>
+                            </div>
+
+                            <!-- Mobile: meta cột phải — ngay sau ảnh (chỉ khi < lg; tránh 2 form comment) -->
+                            <div class="space-y-4 rounded-2xl bg-[#eff1f5] p-3 sm:p-4 lg:hidden">
+                                <PhotoDetailSidebarBody v-if="!layoutDesktop" ref="sidebarBody" />
                             </div>
 
                             <!-- Similar photos -->
@@ -138,293 +143,22 @@
                                 </div>
                             </section>
                         </div>
-                        <!-- Sidebar: nền cột nhạt (#eff1f5) — card trắng nổi trên nền (kiểu 500px) -->
+                        <!-- Sidebar: chỉ desktop — sticky; mobile dùng meta trong cột trái + action bar cố định dưới -->
                         <aside
-                            class="min-w-0 rounded-2xl bg-[#eff1f5] p-3 sm:p-4 lg:col-span-3 lg:sticky lg:top-24 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto lg:pb-4"
-                            data-aos="fade-up"
-                            data-aos-delay="100"
+                            class="hidden min-w-0 rounded-2xl bg-[#eff1f5] p-3 sm:p-4 lg:col-span-3 lg:block lg:sticky lg:top-24 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto lg:self-start lg:pb-4"
                         >
                             <div class="w-full space-y-4">
-                                <!-- Actions -->
-                                <div class="relative rounded-2xl border border-[#eee] bg-white px-2 py-3 shadow-[0_2px_10px_rgba(0,0,0,0.04)]">
-                                    <div class="flex items-center justify-evenly gap-1">
-                                        <button type="button" class="rounded-lg p-2.5 text-lg text-[#444] transition duration-200 ease-out hover:bg-[#f7f8fa] hover:text-[#ff5a5f]" @click="handleClick('toggleLike', photoDetail)">
-                                            <i :class="['fa-heart', photoDetail.liked ? 'fas text-[#ff5a5f]' : 'far']"></i>
-                                        </button>
-                                        <button type="button" class="rounded-lg p-2.5 text-lg text-[#444] transition duration-200 ease-out hover:bg-[#f7f8fa]" @click="copyUrlToClipboard">
-                                            <i class="fa-solid fa-share-nodes"></i>
-                                        </button>
-                                        <button type="button" class="rounded-lg p-2.5 text-lg text-[#444] transition duration-200 ease-out hover:bg-[#f7f8fa]" @click="handleClick('addToGallery', photoDetail.id)">
-                                            <i class="fas fa-plus"></i>
-                                        </button>
-                                        <button
-                                            v-if="photoDetail.user.id !== userStore.user.id"
-                                            type="button"
-                                            class="rounded-lg p-2.5 text-lg text-[#444] transition duration-200 ease-out hover:bg-[#f7f8fa]"
-                                            @click.stop="toggleDropdown('dropdown-' + photoDetail.id, $event)"
-                                            :class="{'ring-2 ring-zinc-200': activeDropdown === 'dropdown-' + photoDetail.id}"
-                                        >
-                                            <i class="fa-solid fa-ellipsis"></i>
-                                        </button>
-                                    </div>
-                                    <div
-                                        v-if="activeDropdown === 'dropdown-' + photoDetail.id"
-                                        class="absolute left-2 right-2 top-full z-[1000] mt-1 overflow-hidden rounded-lg border border-zinc-200 bg-white py-0.5 shadow-lg"
-                                        @click.stop
-                                    >
-                                        <button
-                                            type="button"
-                                            class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-800 transition hover:bg-[#1890ff] hover:text-white"
-                                            @click="handleClick('reportPhoto', photoDetail.id, photoDetail.user.id)"
-                                        >
-                                            <i class="fa-regular fa-flag w-5"></i> Report this photo
-                                        </button>
-                                        <button
-                                            type="button"
-                                            class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-800 transition hover:bg-[#1890ff] hover:text-white"
-                                            @click="toggleBlockUser(photoDetail.user)"
-                                        >
-                                            <i class="fas fa-user-slash w-5"></i> Block User
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <!-- Chi tiết ảnh -->
-                                <div class="rounded-2xl border border-[#eee] bg-white px-4 py-4 shadow-[0_2px_10px_rgba(0,0,0,0.04)]">
-                                    <h3 class="text-lg font-bold leading-snug text-[#222] sm:text-xl">{{ photoDetail.title }}</h3>
-                                    <p class="mt-2 text-sm leading-relaxed text-[#666]">{{ photoDetail.description }}</p>
-                                    <ul class="mt-4 space-y-2 border-t border-[#eee] pt-4 text-sm text-[#444]">
-                                        <li class="flex items-start gap-2">
-                                            <i class="fa-solid fa-location-dot mt-0.5 w-4 shrink-0 text-center text-[#999]"></i>
-                                            <span>{{ photoDetail.location }}</span>
-                                        </li>
-                                        <li class="flex items-start gap-2">
-                                            <i class="fa-solid fa-calendar-days mt-0.5 w-4 shrink-0 text-center text-[#999]"></i>
-                                            <span>{{ formatDate(photoDetail.upload_date) }}</span>
-                                        </li>
-                                        <li class="flex cursor-pointer items-center gap-2 rounded-md px-0.5 py-0.5 transition duration-200 hover:bg-[#f7f8fa]" @click="showLikesPopup">
-                                            <i class="fa-regular fa-heart w-4 shrink-0 text-center text-[#999]"></i>
-                                            <span>{{ formattedPhotoLikes }} Likes</span>
-                                            <span class="text-[#bbb]">&gt;</span>
-                                        </li>
-                                        <li class="flex items-start gap-2">
-                                            <i class="fa-regular fa-eye mt-0.5 w-4 shrink-0 text-center text-[#999]"></i>
-                                            <span>{{ formattedViews }} Impressions</span>
-                                        </li>
-                                        <li class="flex items-start gap-2 text-[#888]">
-                                            <i class="fa-solid fa-arrow-up mt-0.5 w-4 shrink-0 text-center"></i>
-                                            <span>{{ getTimeAgo(photoDetail.upload_date) }}</span>
-                                        </li>
-                                    </ul>
-                                </div>
-
-                                <!-- Tác giả — 500px-style (no link underline; hover = màu đặc trưng) -->
-                                <div
-                                    class="flex flex-col items-center rounded-2xl bg-white px-5 py-6 text-center shadow-[0_2px_12px_rgba(15,23,42,0.07)]"
-                                >
-                                    <NuxtLink
-                                        :to="{ name: 'MyProfile', params: { username: photoDetail.user.username || 'defaultUsername' } }"
-                                        class="block shrink-0 no-underline decoration-transparent transition-colors duration-200 hover:!no-underline focus:!no-underline visited:text-inherit"
-                                    >
-                                        <span
-                                            class="inline-block rounded-full bg-white p-[3px] ring-2 ring-[#40c1df] [box-shadow:0_0_0_2px_#fff]"
-                                        >
-                                            <img
-                                                :src="photoDetail.user.profile_picture ? apiOrigin + photoDetail.user.profile_picture : '/images/imageUserDefault.png'"
-                                                alt=""
-                                                class="block h-16 w-16 rounded-full object-cover"
-                                            />
-                                        </span>
-                                    </NuxtLink>
-                                    <NuxtLink
-                                        :to="{ name: 'MyProfile', params: { username: photoDetail.user.username || 'defaultUsername' } }"
-                                        class="mt-4 block max-w-full no-underline decoration-transparent transition-colors duration-200 hover:!no-underline hover:text-[#3470d1] focus:!no-underline visited:text-gray-900"
-                                    >
-                                        <h3 class="truncate text-base font-bold leading-snug text-gray-900">
-                                            {{ photoDetail.user.username }}
-                                        </h3>
-                                    </NuxtLink>
-                                    <p
-                                        v-if="photoDetail.user.location"
-                                        class="mt-1 text-sm lowercase leading-snug text-gray-600"
-                                    >
-                                        {{ photoDetail.user.location }}
-                                    </p>
-                                    <button
-                                        v-if="photoDetail.user.id !== userStore.user?.id"
-                                        type="button"
-                                        class="mt-5 rounded-full px-8 py-2 text-sm font-bold no-underline transition-colors duration-200 hover:!no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3470d1]/35 focus-visible:ring-offset-2 active:scale-[0.99]"
-                                        :class="
-                                            isFollowing
-                                                ? 'border-2 border-[#3470d1] bg-white text-[#3470d1] hover:border-[#2859a8] hover:bg-[#eef4fb] hover:text-[#2859a8]'
-                                                : 'bg-[#3470d1] text-white hover:bg-[#2859a8]'
-                                        "
-                                        @click="toggleFollow"
-                                    >
-                                        {{ isFollowing ? 'Unfollow' : 'Follow' }}
-                                    </button>
-                                </div>
-
-                                <!-- Bình luận (500px-style: gọn, thread line, Reply không gạch chân) -->
-                                <div class="rounded-2xl bg-white px-4 py-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
-                                    <p class="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">Comments</p>
-
-                                    <div class="flex flex-col items-center gap-3">
-                                        <div
-                                            class="h-14 w-14 shrink-0 overflow-hidden rounded-full bg-[#d1d5db] ring-2 ring-white ring-offset-1 ring-offset-[#f3f4f6]"
-                                        >
-                                            <img
-                                                v-if="userStore.user?.profile_picture"
-                                                :src="apiOrigin + userStore.user.profile_picture"
-                                                alt=""
-                                                class="h-full w-full object-cover"
-                                            />
-                                            <div v-else class="flex h-full w-full items-center justify-center">
-                                                <i class="fa-solid fa-user text-2xl text-white"></i>
-                                            </div>
-                                        </div>
-                                        <input
-                                            ref="commentInput"
-                                            v-model="newComment"
-                                            type="text"
-                                            class="w-full rounded-md border border-[#d1d5db] bg-white px-3 py-2.5 text-sm leading-snug text-[#222] placeholder:text-[#9ca3af] transition-colors duration-200 focus:border-[#38bdf8] focus:outline-none focus:ring-2 focus:ring-[#38bdf8]/20"
-                                            placeholder="Write your comment here"
-                                            @focus="showButtons = true"
-                                            @keydown.enter.prevent
-                                        />
-                                        <div v-if="showButtons" class="flex w-full justify-end gap-2">
-                                            <button
-                                                type="button"
-                                                class="rounded-full px-4 py-1.5 text-sm font-medium text-[#6b7280] no-underline transition-colors duration-200 hover:!no-underline hover:bg-[#f3f4f6]"
-                                                @click="cancelComment"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                type="button"
-                                                class="rounded-full bg-[#0ea5e9] px-5 py-1.5 text-sm font-semibold text-white no-underline shadow-sm transition-colors duration-200 hover:!no-underline hover:bg-[#0284c7] disabled:cursor-not-allowed disabled:bg-[#cbd5e1]"
-                                                :disabled="!newComment.trim()"
-                                                @click="postComment"
-                                            >
-                                                Post
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div v-if="comments.length === 0" class="mt-5 rounded-lg border border-dashed border-[#e5e7eb] bg-[#fafafa] px-3 py-5 text-center">
-                                        <i class="fa-regular fa-comment mb-2 text-2xl text-[#0ea5e9]/80"></i>
-                                        <p class="text-sm font-medium text-[#374151]">No comments yet</p>
-                                        <p class="mt-0.5 text-xs text-[#9ca3af]">Be the first to share your thoughts.</p>
-                                    </div>
-
-                                    <template v-else>
-                                        <p class="mb-3 mt-5 text-sm font-bold text-[#374151]">
-                                            {{ total }} {{ total === 1 ? 'Comment' : 'Comments' }}
-                                        </p>
-                                        <ul class="divide-y divide-[#eee]">
-                                            <li v-for="comment in comments" :key="comment.id" class="py-3 first:pt-0">
-                                                <div class="flex gap-2.5">
-                                                    <img
-                                                        :src="comment?.user?.profile_picture ? apiOrigin + comment.user.profile_picture : '/images/imageUserDefault.png'"
-                                                        alt=""
-                                                        class="mt-0.5 h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-[#eee]"
-                                                    />
-                                                    <div class="min-w-0 flex-1">
-                                                        <div class="flex items-start justify-between gap-2">
-                                                            <span class="text-sm font-bold text-[#222]">{{
-                                                                comment?.user?.name || comment?.user?.username || 'Unknown User'
-                                                            }}</span>
-                                                            <div class="relative shrink-0">
-                                                                <button
-                                                                    type="button"
-                                                                    class="rounded p-1 text-[#9ca3af] transition-colors duration-200 hover:bg-[#f3f4f6] hover:text-[#4b5563]"
-                                                                    aria-label="Comment options"
-                                                                    @click.stop="toggleDropdown('dropdown-' + comment.id)"
-                                                                >
-                                                                    <i class="fa-solid fa-ellipsis text-sm"></i>
-                                                                </button>
-                                                                <div
-                                                                    v-if="activeDropdown === 'dropdown-' + comment.id"
-                                                                    class="absolute right-0 top-full z-[1000] mt-1 w-44 overflow-hidden rounded-lg border border-zinc-200 bg-white py-1 shadow-lg"
-                                                                    @click.stop
-                                                                >
-                                                                    <button
-                                                                        v-if="comment.user.id !== userStore.user.id"
-                                                                        type="button"
-                                                                        class="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-zinc-800 hover:bg-[#1890ff] hover:text-white"
-                                                                        @click="handleClick('reportComment', comment.id, comment.user.id)"
-                                                                    >
-                                                                        <i class="fa-regular fa-flag w-4"></i> Report
-                                                                    </button>
-                                                                    <button
-                                                                        v-if="comment.user.id === userStore.user.id"
-                                                                        type="button"
-                                                                        class="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-zinc-800 hover:bg-[#1890ff] hover:text-white"
-                                                                        @click="showDeleteConfirm(comment)"
-                                                                    >
-                                                                        <i class="fa-solid fa-trash-can w-4"></i> Delete
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <div class="mt-1.5 border-l-2 border-[#bae6fd] pl-3">
-                                                            <p class="text-sm leading-relaxed text-[#555]">{{ comment.comment_text }}</p>
-                                                            <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-                                                                <span class="text-xs text-[#9ca3af]">{{ getTimeAgo(comment.created_at) }}</span>
-                                                                <button
-                                                                    type="button"
-                                                                    class="inline-flex items-center gap-1.5 text-sm font-semibold text-[#0ea5e9] no-underline transition-colors duration-200 hover:!no-underline hover:text-[#0284c7]"
-                                                                    @click="focusCommentInput"
-                                                                >
-                                                                    <i class="fa-regular fa-comment"></i>
-                                                                    Reply
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </li>
-                                        </ul>
-                                        <div v-if="total > 0" class="mt-4 flex flex-col items-center gap-2 border-t border-[#eee] pt-3">
-                                            <button
-                                                v-if="currentPage < lastPage"
-                                                type="button"
-                                                class="text-sm font-medium text-[#0ea5e9] no-underline transition-colors duration-200 hover:!no-underline hover:text-[#0284c7]"
-                                                @click="loadMoreComments"
-                                            >
-                                                Read more
-                                            </button>
-                                            <button
-                                                v-if="currentPage >= lastPage && total > 3"
-                                                type="button"
-                                                class="text-sm font-medium text-[#6b7280] no-underline transition-colors duration-200 hover:!no-underline hover:text-[#374151]"
-                                                @click="readLessComments"
-                                            >
-                                                Show less
-                                            </button>
-                                        </div>
-                                    </template>
-                                </div>
-                                <!-- Danh mục — nền chip rõ (ép ! để thắng CSS global a { background: transparent }) -->
-                                <div class="rounded-2xl bg-white px-4 py-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
-                                    <h5 class="mb-3 text-sm leading-snug text-gray-600">
-                                        <span class="font-normal">Category :</span>
-                                        <span v-if="photoDetail.category" class="ml-1 font-bold text-gray-900">{{ photoDetail.category.category_name }}</span>
-                                    </h5>
-                                    <div class="flex flex-wrap gap-2">
-                                        <NuxtLink
-                                            v-for="category in categories"
-                                            :key="category.id"
-                                            :to="{ name: 'DetailsCategory', query: { slugs: category.slug } }"
-                                            class="inline-block rounded-full border border-[#cfd8e3] !bg-[#e8f1f8] px-4 py-2 text-sm font-bold text-[#4b5563] no-underline transition-colors duration-200 hover:!no-underline hover:border-[#3b82f6] hover:!bg-white hover:text-[#2563eb] visited:!bg-[#e8f1f8] visited:text-[#4b5563]"
-                                        >
-                                            {{ category.category_name }}
-                                        </NuxtLink>
-                                    </div>
-                                </div>
+                                <PhotoDetailActionsBar :dropdown-up="false" />
+                                <PhotoDetailSidebarBody v-if="layoutDesktop" ref="sidebarBody" />
                             </div>
                         </aside>
                     </div>
+                </div>
+                <!-- Mobile: chỉ 4 nút — cố định cuối viewport -->
+                <div
+                    class="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200/80 bg-white/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-2 shadow-[0_-8px_32px_rgba(0,0,0,0.14)] backdrop-blur-sm lg:hidden"
+                >
+                    <PhotoDetailActionsBar :dropdown-up="true" />
                 </div>
             </div>
             <AddToGalleryModal
@@ -490,10 +224,12 @@ import { useLikeStore } from '~/stores/likeStore';
 import { useAuthStore } from '~/stores/authStore';
 import { useUserStore } from '~/stores/userStore';
 import { useBlockStore } from '~/stores/blockStore';
-import AddToGalleryModal from '~/features/shared/components/AddToGalleryModal.vue'
-import ReportPhotoModal from '~/features/shared/components/ReportPhotoModal.vue'
-import ReportCommentModal from '~/features/shared/components/ReportCommentModal.vue'
-import ReportGalleryModal from '~/features/shared/components/ReportGalleryModal.vue'
+import AddToGalleryModal from '~/features/gallery/components/AddToGalleryModal.vue'
+import ReportPhotoModal from '~/features/photo/components/ReportPhotoModal.vue'
+import ReportCommentModal from '~/features/photo/components/ReportCommentModal.vue'
+import ReportGalleryModal from '~/features/gallery/components/ReportGalleryModal.vue'
+import PhotoDetailSidebarBody from '~/features/photo/components/PhotoDetailSidebarBody.vue'
+import PhotoDetailActionsBar from '~/features/photo/components/PhotoDetailActionsBar.vue'
 import { Modal, notification } from 'ant-design-vue';
 import { h } from 'vue';
 import { ExclamationCircleOutlined } from '@ant-design/icons-vue';
@@ -504,7 +240,14 @@ export default {
         AddToGalleryModal,
         ReportPhotoModal,
         ReportCommentModal,
-        ReportGalleryModal
+        ReportGalleryModal,
+        PhotoDetailSidebarBody,
+        PhotoDetailActionsBar,
+    },
+    provide() {
+        return {
+            pd: this,
+        }
     },
     data() {
         return {
@@ -550,6 +293,8 @@ export default {
             selectedViolatorId: null,
             similarPhotos: [],
             relatedGalleries: [],
+            /** Chỉ mount một bản sidebar (mobile vs desktop) — tránh 2 ô comment / ref trùng */
+            layoutDesktop: false,
         };
     },
     watch: {
@@ -656,7 +401,23 @@ export default {
             return useUserStore();
         },
     },
+    beforeMount() {
+        if (typeof window !== 'undefined') {
+            this.layoutDesktop = window.matchMedia('(min-width: 1024px)').matches
+        }
+    },
+    mounted() {
+        if (typeof window === 'undefined') {
+            return
+        }
+        this._mq = window.matchMedia('(min-width: 1024px)')
+        this._mqHandler = () => {
+            this.layoutDesktop = this._mq.matches
+        }
+        this._mq.addEventListener('change', this._mqHandler)
+    },
     beforeUnmount() {
+        this._mq?.removeEventListener('change', this._mqHandler)
         const popupContent = this.$refs.popupContent;
         if (popupContent) {
             popupContent.removeEventListener('scroll', this.handleScroll);
@@ -1043,7 +804,11 @@ export default {
         focusCommentInput() {
             this.showButtons = true;
             this.$nextTick(() => {
-                this.$refs.commentInput?.focus?.();
+                const body = this.$refs.sidebarBody;
+                const input = body && body.$refs ? body.$refs.commentInput : null;
+                if (input && typeof input.focus === 'function') {
+                    input.focus();
+                }
             });
         },
         async loadMoreComments() {

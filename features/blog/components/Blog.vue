@@ -1,38 +1,77 @@
 <template>
-    <div class="blog-container">
-                <!-- Full-Screen Image Section -->
-                <section class="full-screen-image">
-                    <img src="/images/covers/covers_0.jpeg" alt="Full Screen" class="image" />
-                    <div class="image-container">
-                        <h2>Mastering Light and Perspective in Urban Architecture</h2>
-                        <p>Published by MyPortfolio Blog - 7 days ago</p>
-                        <p>Architectural photography goes beyond capturing buildings...</p>
-                    </div>
-                </section>
-
-                <!-- Featured Article -->
-                <section class="featured" v-for="blog in latestBlogs" :key="blog.id">
-                    <img :src="blog.cover_image" alt="Featured Article" class="featured-image" />
-                    <div class="featured-content">
-                        <h2>{{ blog.title }}</h2>
-                        <p>Published by MyPortfolio Blog - {{ timeAgo(blog.created_at) }}</p>
-
-                        <button class="read-more" @click="goToBlog(blog.slug)">Keep reading</button>
-                    </div>
-                </section>
-
-                <!-- Latest Posts -->
-                <section class="latest-posts">
-                    <h2>Latest Posts</h2>
-                    <div class="posts-grid">
-                        <div class="post" v-for="blog in olderBlogs" :key="blog.id" @click="goToBlog(blog.slug)">
-                            <img :src="blog.cover_image" alt="Post Image" class="post-image" />
-                            <h3>{{ blog.title }}</h3>
-                            <p>MyPortfolio Blog - {{ timeAgo(blog.created_at) }}</p>
-                        </div>
-                    </div>
-                </section>
+    <div
+        class="min-h-screen bg-[#f7f8fa] font-sans text-zinc-900 antialiased [font-family:ui-sans-serif,system-ui,sans-serif]"
+    >
+        <section class="relative h-[min(50vh,500px)] w-full overflow-hidden">
+            <img
+                src="/images/covers/covers_0.jpeg"
+                alt=""
+                class="absolute inset-0 h-full w-full object-cover"
+            />
+            <div
+                class="absolute inset-0 flex flex-col items-center justify-center bg-black/50 px-4 text-center text-white"
+            >
+                <h2 class="max-w-3xl text-xl font-bold tracking-tight sm:text-2xl md:text-3xl">
+                    Mastering Light and Perspective in Urban Architecture
+                </h2>
+                <p class="mt-3 text-sm text-white/90 sm:text-base">Published by MyPortfolio Blog - 7 days ago</p>
+                <p class="mt-2 max-w-2xl text-sm text-white/85 sm:text-base">
+                    Architectural photography goes beyond capturing buildings...
+                </p>
             </div>
+        </section>
+
+        <section
+            v-for="blog in latestBlogs"
+            :key="blog.id"
+            class="border-b border-neutral-200/80 bg-white"
+        >
+            <div
+                class="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-center md:gap-10 lg:px-8"
+            >
+                <img
+                    :src="blog.cover_image"
+                    alt=""
+                    class="h-48 w-full shrink-0 rounded-2xl object-cover shadow-[0_2px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 md:h-[300px] md:w-[min(100%,500px)]"
+                />
+                <div class="min-w-0 flex-1 text-left">
+                    <h2 class="text-xl font-bold tracking-tight text-[#222] sm:text-2xl">{{ blog.title }}</h2>
+                    <p class="mt-2 text-sm text-zinc-600">
+                        Published by MyPortfolio Blog - {{ timeAgo(blog.created_at) }}
+                    </p>
+                    <button
+                        type="button"
+                        class="mt-6 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                        @click="goToBlog(blog.slug)"
+                    >
+                        Keep reading
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section class="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+            <h2 class="mb-8 text-xl font-bold tracking-tight text-[#222] sm:text-2xl">Latest Posts</h2>
+            <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <article
+                    v-for="blog in olderBlogs"
+                    :key="blog.id"
+                    class="cursor-pointer overflow-hidden rounded-2xl border border-neutral-200/80 bg-neutral-100/80 p-2 shadow-sm ring-1 ring-black/[0.04] transition hover:border-neutral-300 hover:shadow-md"
+                    @click="goToBlog(blog.slug)"
+                >
+                    <img
+                        :src="blog.cover_image"
+                        alt=""
+                        class="h-40 w-full rounded-xl object-cover"
+                    />
+                    <div class="p-3 text-left">
+                        <h3 class="line-clamp-2 text-base font-semibold text-zinc-900">{{ blog.title }}</h3>
+                        <p class="mt-1 text-sm text-zinc-600">MyPortfolio Blog - {{ timeAgo(blog.created_at) }}</p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </div>
 </template>
 
 <script>
@@ -51,15 +90,15 @@ export default {
         };
     },
     mounted() {
-        this.fetchLatestBlogs(); // Lấy 5 blog gần nhất
-        this.fetchOlderBlogs(); // Lấy blog cũ hơn
+        this.fetchLatestBlogs();
+        this.fetchOlderBlogs();
     },
     methods: {
         async fetchLatestBlogs() {
             try {
                 const response = await blogService.fetchLatest();
                 if (response.data.status === 'success' && response.data.blogs.length > 0) {
-                    this.latestBlogs = response.data.blogs; // Lưu toàn bộ 5 blog từ API
+                    this.latestBlogs = response.data.blogs;
                 } else {
                     throw new Error('No latest blogs found');
                 }
@@ -75,7 +114,7 @@ export default {
             try {
                 const response = await blogService.fetchOlder();
                 if (response.data.status === 'success') {
-                    this.olderBlogs = response.data.blogs; // Lấy danh sách blog cũ
+                    this.olderBlogs = response.data.blogs;
                 } else {
                     throw new Error('No older blogs found');
                 }
@@ -100,90 +139,3 @@ export default {
     },
 };
 </script>
-
-<style scoped>
-.blog-container {
-    max-width: 2200px;
-    margin: auto;
-}
-
-.full-screen-image {
-    position: relative;
-    height: 500px; /* Chiều cao của ảnh lớn */
-    overflow: hidden;
-}
-
-.image {
-    width: 100%;
-    height: 100%;
-    object-fit: cover; /* Giữ tỷ lệ và lấp đầy không gian */
-}
-
-.image-container {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    background-color: rgba(0, 0, 0, 0.5); /* Nền mờ cho chữ */
-    text-align: center;
-}
-
-.featured {
-    display: flex;
-    align-items: center;
-    padding: 20px;
-}
-
-.featured-image {
-    width: 500px; /* Chiều rộng cố định */
-    height: 300px; /* Chiều cao cố định */
-    object-fit: cover; /* Giữ tỷ lệ ảnh */
-}
-
-.featured-content {
-    padding: 20px;
-}
-
-.read-more {
-    background: #007bff; /* Màu xanh */
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    cursor: pointer;
-    font-size: 16px;
-    font-weight: bold;
-    border-radius: 5px;
-    transition: background 0.3s;
-}
-
-.read-more:hover {
-    background: #0056b3; /* Màu xanh đậm khi hover */
-}
-
-.latest-posts {
-    padding: 20px;
-}
-
-.posts-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-}
-
-.post {
-    background: #f3f3f3;
-    padding: 10px;
-}
-
-.post-image {
-    width: 100%; /* Chiếm toàn bộ chiều rộng */
-    height: 150px; /* Chiều cao cố định */
-    object-fit: cover; /* Giữ tỷ lệ ảnh */
-}
-</style>

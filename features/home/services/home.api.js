@@ -8,10 +8,23 @@ export const homeService = {
   fetchFollowFeed(config = {}) {
     return axios.get(getUrlList().getFollowData, config)
   },
-  fetchCategories(config = {}) {
-    return axios.get(getUrlList().getCategories, config)
+  /** Explore / Following trên trang home */
+  fetchTopLikedPhotos(config = {}) {
+    return axios.get(getUrlList().getTopLikedPhotos, config)
   },
-  fetchPhotosByCategorySlugs(slugs, config = {}) {
-    return axios.get(getUrlList().getPhotosByCategorySlugs(slugs), config)
+  fetchTopUsersWithPhotos(config = {}) {
+    return axios.get(getUrlList().getTopUsersWithPhotos, config)
+  },
+  fetchTopCategories(config = {}) {
+    return axios.get(getUrlList().getTopCategories, config)
+  },
+  fetchTopLikedGalleries(config = {}) {
+    return axios.get(getUrlList().getTopLikedGalleries, config)
+  },
+  fetchRecentFollowedPhotos(params, config = {}) {
+    return axios.get(getUrlList().getRecentFollowedPhotos, { params, ...config })
+  },
+  fetchRecentFollowedGalleries(params, config = {}) {
+    return axios.get(getUrlList().getRecentFollowedGalleries, { params, ...config })
   }
 }

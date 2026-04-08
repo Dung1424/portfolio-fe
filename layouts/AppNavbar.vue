@@ -27,18 +27,35 @@ type NavbarNotification = {
 const notifications = computed(() => notificationsRef.value as NavbarNotification[])
 
 const mediaBase = useMediaBase()
+const route = useRoute()
 const router = useRouter()
 const searchQuery = ref('')
+
+const userMenuOpen = ref(false)
+const notifOpen = ref(false)
+const mobileNavOpen = ref(false)
+const searchScopeOpen = ref(false)
+
+const navRef = ref<HTMLElement | null>(null)
 
 const userAvatarSrc = computed(() => {
   const path = user.value?.profile_picture
   if (!path) return ''
   return joinMediaUrl(mediaBase.value, path)
 })
-const userName = computed(() => user.value?.username || '')
 const hasMoreNotifications = computed(() => currentPage.value < lastPage.value)
 
-useLegacyVendorScripts()
+function navLinkClass(active: boolean) {
+  return active
+    ? 'font-semibold text-[#1877f2]'
+    : 'font-medium text-zinc-700 transition-colors hover:text-zinc-900'
+}
+
+const isDiscoverActive = computed(() => route.name === 'Index')
+const isChatActive = computed(() => route.name === 'Chat')
+const isContactActive = computed(() => route.name === 'Contact')
+const isBlogActive = computed(() => route.name === 'Blog' || route.name === 'BlogDetails')
+const isCategoryActive = computed(() => route.name === 'Category' || route.name === 'DetailsCategory')
 
 onMounted(async () => {
   await authStore.checkLoginStatus()
@@ -46,7 +63,22 @@ onMounted(async () => {
     await userStore.fetchUserData()
     await notificationStore.fetchNotifications(1)
   }
+  document.addEventListener('click', onDocumentClick)
 })
+
+onUnmounted(() => {
+  document.removeEventListener('click', onDocumentClick)
+})
+
+function onDocumentClick(e: MouseEvent) {
+  const el = navRef.value
+  if (el && !el.contains(e.target as Node)) {
+    userMenuOpen.value = false
+    notifOpen.value = false
+    mobileNavOpen.value = false
+    searchScopeOpen.value = false
+  }
+}
 
 async function navigateToPhoto(notification: NavbarNotification) {
   if (notification.id) {
@@ -64,6 +96,7 @@ async function navigateToPhoto(notification: NavbarNotification) {
   } else {
     alert('Invalid notification data.')
   }
+  notifOpen.value = false
 }
 
 async function loadMoreNotifications() {
@@ -79,266 +112,340 @@ function runSearch() {
 }
 
 async function handleLogoutClick() {
+  userMenuOpen.value = false
   await authStore.handleLogout()
+}
+
+function toggleUserMenu() {
+  userMenuOpen.value = !userMenuOpen.value
+  if (userMenuOpen.value) {
+    notifOpen.value = false
+  }
+}
+
+function toggleNotif() {
+  notifOpen.value = !notifOpen.value
+  if (notifOpen.value) {
+    userMenuOpen.value = false
+  }
 }
 </script>
 
 <template>
-  <nav class="navbar">
-    <div class="navbar-left">
-      <NuxtLink class="navbar-brand" to="/">
-        MyPortfolio
-      </NuxtLink>
-      <div class="nav-links">
-        <NuxtLink to="/" class="nav-link" style="color: #007bff">
-          Discover
+  <header
+    ref="navRef"
+    class="fixed top-0 z-[1000] w-full border-b border-zinc-200 bg-white"
+  >
+    <div class="mx-auto flex h-[52px] max-w-[1600px] flex-nowrap items-center gap-2 px-3 sm:gap-3 sm:px-5 lg:px-8">
+      <!-- Left: logo + nav -->
+      <div class="flex min-w-0 shrink-0 items-center gap-5 lg:gap-8">
+        <NuxtLink
+          to="/"
+          class="shrink-0 text-[18px] font-bold tracking-tight text-black"
+        >
+          MyPortfolio
         </NuxtLink>
-        <NuxtLink to="/contact" class="nav-link">
-          Contact
-        </NuxtLink>
-        <NuxtLink to="/blog" class="nav-link">
-          Blog
-        </NuxtLink>
-        <NuxtLink :to="{ name: 'Category' }" class="nav-link">
-          Category
-        </NuxtLink>
+        <nav class="hidden items-center gap-1 lg:flex" aria-label="Primary">
+          <NuxtLink to="/" class="rounded-md px-2 py-1.5 text-[15px]" :class="navLinkClass(isDiscoverActive)">
+            Discover
+          </NuxtLink>
+          <NuxtLink to="/contact" class="rounded-md px-2 py-1.5 text-[15px]" :class="navLinkClass(isContactActive)">
+            Contact
+          </NuxtLink>
+          <NuxtLink to="/blog" class="rounded-md px-2 py-1.5 text-[15px]" :class="navLinkClass(isBlogActive)">
+            Blog
+          </NuxtLink>
+          <NuxtLink :to="{ name: 'Category' }" class="rounded-md px-2 py-1.5 text-[15px]" :class="navLinkClass(isCategoryActive)">
+            Category
+          </NuxtLink>
+        </nav>
+      </div>
+
+      <!-- Center: pill search — cạnh phải bo tròn nhờ overflow-hidden + nút xanh full chiều cao -->
+      <div class="hidden min-w-0 flex-1 px-1 md:block">
+        <div
+          class="mx-auto flex h-10 max-w-2xl items-stretch overflow-hidden rounded-full border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
+        >
+          <div class="relative shrink-0">
+            <button
+              type="button"
+              class="flex h-full items-center gap-1 px-3 text-[13px] font-medium text-zinc-800 hover:bg-zinc-50"
+              aria-haspopup="listbox"
+              :aria-expanded="searchScopeOpen"
+              @click.stop="searchScopeOpen = !searchScopeOpen"
+            >
+              Photos
+              <i class="fa-solid fa-chevron-down text-[9px] text-zinc-400" />
+            </button>
+            <div
+              v-show="searchScopeOpen"
+              class="absolute left-0 top-full z-50 mt-1 min-w-[140px] overflow-hidden rounded-lg border border-zinc-200 bg-white py-1 shadow-lg"
+              @click.stop
+            >
+              <button type="button" class="block w-full px-4 py-2 text-left text-sm hover:bg-zinc-50" @click="searchScopeOpen = false">
+                Photos
+              </button>
+              <button type="button" class="block w-full px-4 py-2 text-left text-sm hover:bg-zinc-50" @click="searchScopeOpen = false">
+                Galleries
+              </button>
+            </div>
+          </div>
+          <span class="w-px shrink-0 self-stretch bg-zinc-200 my-2" aria-hidden="true" />
+          <input
+            v-model="searchQuery"
+            type="search"
+            placeholder="Search powered by AI"
+            class="min-w-0 flex-1 border-0 bg-transparent px-3 text-[14px] text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-0"
+            @keyup.enter="runSearch"
+          >
+          <button
+            type="button"
+            class="flex shrink-0 items-center justify-center bg-[#1877f2] px-4 text-white transition hover:bg-[#166fe5] active:bg-[#1464d4]"
+            aria-label="Search"
+            @click="runSearch"
+          >
+            <i class="fas fa-search text-[13px]" />
+          </button>
+        </div>
+      </div>
+
+      <!-- Right: icons + Upload (500px order) -->
+      <div class="flex shrink-0 items-center gap-0.5 sm:gap-1">
+        <template v-if="isLoggedIn">
+          <div class="relative">
+            <button
+              type="button"
+              class="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-800 hover:bg-zinc-100"
+              aria-haspopup="true"
+              :aria-expanded="userMenuOpen"
+              @click.stop="toggleUserMenu"
+            >
+              <img
+                v-if="userAvatarSrc"
+                :src="userAvatarSrc"
+                alt=""
+                class="h-8 w-8 rounded-full object-cover ring-1 ring-zinc-200"
+              >
+              <i v-else class="fa-regular fa-user text-[20px]" />
+            </button>
+            <Transition
+              enter-active-class="transition ease-out duration-100"
+              enter-from-class="opacity-0 scale-95"
+              enter-to-class="opacity-100 scale-100"
+              leave-active-class="transition ease-in duration-75"
+              leave-from-class="opacity-100 scale-100"
+              leave-to-class="opacity-0 scale-95"
+            >
+              <div
+                v-show="userMenuOpen"
+                class="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 shadow-lg"
+                role="menu"
+                @click.stop
+              >
+                <NuxtLink
+                  v-if="user?.username"
+                  :to="{ name: 'MyProfile', params: { username: user.username } }"
+                  class="flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-800 transition hover:bg-zinc-50"
+                  @click="userMenuOpen = false"
+                >
+                  <i class="fa-regular fa-circle-user w-5 text-center text-[17px] text-zinc-500" />
+                  <span>Profile</span>
+                </NuxtLink>
+                <NuxtLink
+                  :to="{ path: '/account', query: { tab: 'photos' } }"
+                  class="flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-800 transition hover:bg-zinc-50"
+                  @click="userMenuOpen = false"
+                >
+                  <i class="fa-solid fa-camera w-5 text-zinc-500" />
+                  <span>My Photo</span>
+                </NuxtLink>
+                <NuxtLink
+                  :to="{ path: '/account', query: { tab: 'galleries' } }"
+                  class="flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-800 transition hover:bg-zinc-50"
+                  @click="userMenuOpen = false"
+                >
+                  <i class="fa-solid fa-images w-5 text-zinc-500" />
+                  <span>My Gallery</span>
+                </NuxtLink>
+                <NuxtLink
+                  to="/login"
+                  class="flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-800 transition hover:bg-zinc-50"
+                  @click.prevent="handleLogoutClick"
+                >
+                  <i class="fa-solid fa-sign-out-alt w-5 text-zinc-500" />
+                  <span>Logout</span>
+                </NuxtLink>
+              </div>
+            </Transition>
+          </div>
+
+          <NuxtLink
+            to="/chat"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors"
+            :class="isChatActive ? 'bg-sky-100 text-[#1877f2]' : 'text-zinc-700 hover:bg-zinc-100'"
+            title="Messages"
+            aria-label="Messages"
+          >
+            <i class="fa-regular fa-paper-plane text-[19px]" />
+          </NuxtLink>
+
+          <div class="relative">
+            <button
+              type="button"
+              class="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-800 hover:bg-zinc-100"
+              aria-label="Notifications"
+              :aria-expanded="notifOpen"
+              @click.stop="toggleNotif"
+            >
+              <i class="fa-regular fa-bell text-[21px]" />
+              <span
+                v-if="unreadCount > 0"
+                class="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"
+              />
+            </button>
+            <Transition
+              enter-active-class="transition ease-out duration-100"
+              enter-from-class="opacity-0 translate-y-1"
+              enter-to-class="opacity-100 translate-y-0"
+              leave-active-class="transition ease-in duration-75"
+              leave-from-class="opacity-100 translate-y-0"
+              leave-to-class="opacity-0 translate-y-1"
+            >
+              <div
+                v-show="notifOpen"
+                class="absolute right-0 top-full z-50 mt-2 max-h-[min(70vh,600px)] w-[min(calc(100vw-2rem),320px)] overflow-y-auto rounded-xl border border-zinc-200 bg-white shadow-xl"
+                @click.stop
+              >
+                <div class="sticky top-0 z-[1] border-b border-zinc-100 bg-white py-3 text-center text-base font-semibold text-zinc-900">
+                  Notifications
+                </div>
+                <div
+                  v-for="n in notifications"
+                  :key="n.id"
+                  class="flex gap-3 border-b border-zinc-100 px-3 py-2.5 transition last:border-0 hover:bg-zinc-50"
+                  :class="{ 'bg-sky-50/80': !n.read }"
+                >
+                  <img :src="n.image" alt="" class="h-10 w-10 shrink-0 rounded-full object-cover">
+                  <div class="min-w-0 flex-1">
+                    <p class="cursor-pointer text-sm font-medium text-zinc-800" @click="navigateToPhoto(n)">
+                      {{ n.message }}
+                    </p>
+                    <small class="text-xs text-zinc-500">{{ n.time }}</small>
+                  </div>
+                </div>
+                <button
+                  v-if="hasMoreNotifications"
+                  type="button"
+                  class="sticky bottom-0 w-full border-t border-zinc-100 bg-white py-2.5 text-center text-sm font-medium text-[#1877f2] transition hover:bg-zinc-50"
+                  @click="loadMoreNotifications"
+                >
+                  View more
+                </button>
+              </div>
+            </Transition>
+          </div>
+
+          <NuxtLink
+            :to="{ path: '/account', query: { tab: 'photos' } }"
+            class="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-800 hover:bg-zinc-100 xl:flex"
+            title="Your content"
+            aria-label="Downloads"
+          >
+            <i class="fa-solid fa-mobile-screen-button text-[18px]" />
+          </NuxtLink>
+
+          <button
+            type="button"
+            class="hidden shrink-0 items-center gap-2 rounded-full border-2 border-black bg-white px-5 py-2 text-sm font-bold tracking-tight text-black shadow-none outline-none transition hover:bg-zinc-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400 sm:inline-flex"
+            @click="goToAddPhotos"
+          >
+            <i class="fa-solid fa-arrow-up text-[15px] leading-none" aria-hidden="true" />
+            <span class="select-none">Upload</span>
+          </button>
+        </template>
+
+        <template v-else>
+          <div class="hidden items-center gap-2 sm:flex">
+            <NuxtLink
+              to="/login"
+              class="rounded-full px-3 py-1.5 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+            >
+              Log in
+            </NuxtLink>
+            <NuxtLink
+              to="/register"
+              class="rounded-full bg-black px-3 py-1.5 text-sm font-bold text-white hover:bg-zinc-800"
+            >
+              Sign up
+            </NuxtLink>
+          </div>
+        </template>
+
+        <button
+          type="button"
+          class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-zinc-800 md:hidden"
+          aria-label="Open menu"
+          @click.stop="mobileNavOpen = !mobileNavOpen"
+        >
+          <i class="fa-solid fa-bars text-lg" />
+        </button>
       </div>
     </div>
-    <div class="navbar-right">
-      <div class="search-bar">
+
+    <div
+      v-show="mobileNavOpen"
+      class="border-t border-zinc-100 bg-white px-4 py-4 md:hidden"
+    >
+      <div class="mb-4 flex h-10 items-stretch overflow-hidden rounded-full border border-zinc-200 bg-white shadow-sm">
+        <span class="flex shrink-0 items-center px-2 text-xs font-medium text-zinc-600">Photos</span>
+        <span class="my-2 w-px shrink-0 bg-zinc-200" />
         <input
           v-model="searchQuery"
-          type="text"
+          type="search"
           placeholder="Search powered by AI"
+          class="min-w-0 flex-1 border-0 bg-transparent px-2 text-sm focus:ring-0"
           @keyup.enter="runSearch"
         >
-        <i class="fas fa-search search-icon" @click="runSearch" />
+        <button
+          type="button"
+          class="flex shrink-0 items-center justify-center bg-[#1877f2] px-4 text-white active:bg-[#1464d4]"
+          aria-label="Search"
+          @click="runSearch"
+        >
+          <i class="fas fa-search text-xs" />
+        </button>
       </div>
-      <div class="icon-container">
-        <div v-if="isLoggedIn" class="user-dropdown">
-          <img
-            v-if="userAvatarSrc"
-            :src="userAvatarSrc"
-            alt="User"
-            style="width: 30px; height: 30px; border-radius: 50%;"
-            @click="toggleAppDropdown('dropdownMenu')"
-          >
-          <img
-            v-else
-            src="/images/imageUserDefault.png"
-            alt="Default User"
-            style="width: 30px; height: 30px; border-radius: 50%;"
-            @click="toggleAppDropdown('dropdownMenu')"
-          >
-          <div id="dropdownMenu" class="dropdown-content">
-            <NuxtLink to="/myPhotos">
-              <i class="fa-solid fa-camera" />
-              <span>My Photo</span>
-            </NuxtLink>
-            <NuxtLink to="/myGallery">
-              <i class="fa-solid fa-images" />
-              <span>My Gallery</span>
-            </NuxtLink>
-            <NuxtLink to="/login" @click.prevent="handleLogoutClick">
-              <i class="fa-solid fa-sign-out-alt" />
-              <span>Logout</span>
-            </NuxtLink>
-          </div>
-        </div>
-        <div v-else>
-          <NuxtLink to="/login" class="btn-custom login-btn">
-            Log in
-          </NuxtLink>
-          <NuxtLink to="/register" class="btn-custom signup-btn">
-            Sign up
-          </NuxtLink>
-        </div>
-        <NuxtLink v-if="userName" :to="{ name: 'MyProfile', params: { username: userName } }">
-          <i v-if="isLoggedIn" class="fa-regular fa-user" style="font-size: 24px; color: black" />
+      <div class="flex flex-col gap-1 text-sm">
+        <NuxtLink to="/" class="rounded-lg px-3 py-2" :class="isDiscoverActive ? 'bg-sky-100 font-bold text-zinc-900' : 'text-zinc-700'" @click="mobileNavOpen = false">
+          Discover
         </NuxtLink>
-        <div class="notification-wrapper">
-          <i
-            v-if="isLoggedIn"
-            class="fa-regular fa-bell"
-            style="font-size: 24px;"
-            @click="toggleAppDropdown('notificationDropdown')"
-          >
-            <span v-if="unreadCount > 0" class="notification-dot" />
-          </i>
-          <div id="notificationDropdown" class="notification-dropdown">
-            <div class="notification-header">
-              Notifications
-            </div>
-            <div
-              v-for="n in notifications"
-              :key="n.id"
-              :class="['notification-item', { unread: !n.read }]"
-            >
-              <img :src="n.image" alt="User" class="notification-image">
-              <div class="notification-content">
-                <p class="notification-message" @click="navigateToPhoto(n)">
-                  {{ n.message }}
-                </p>
-                <small class="notification-time">{{ n.time }}</small>
-              </div>
-            </div>
-            <div v-if="hasMoreNotifications" class="see-more" @click="loadMoreNotifications">
-              View more
-            </div>
-          </div>
-        </div>
+        <NuxtLink to="/contact" class="rounded-lg px-3 py-2" :class="isContactActive ? 'bg-sky-100 font-bold text-zinc-900' : 'text-zinc-700'" @click="mobileNavOpen = false">
+          Contact
+        </NuxtLink>
+        <NuxtLink to="/blog" class="rounded-lg px-3 py-2" :class="isBlogActive ? 'bg-sky-100 font-bold text-zinc-900' : 'text-zinc-700'" @click="mobileNavOpen = false">
+          Blog
+        </NuxtLink>
+        <NuxtLink :to="{ name: 'Category' }" class="rounded-lg px-3 py-2" :class="isCategoryActive ? 'bg-sky-100 font-bold text-zinc-900' : 'text-zinc-700'" @click="mobileNavOpen = false">
+          Category
+        </NuxtLink>
+        <NuxtLink
+          v-if="isLoggedIn"
+          to="/chat"
+          class="rounded-lg px-3 py-2"
+          :class="isChatActive ? 'bg-sky-100 font-bold text-zinc-900' : 'text-zinc-700'"
+          @click="mobileNavOpen = false"
+        >
+          Messages
+        </NuxtLink>
       </div>
-      <button v-if="isLoggedIn" class="upload-button" type="button" @click="goToAddPhotos">
-        <i class="fa-solid fa-arrow-up" /> Upload
-      </button>
-      <button class="hamburger" type="button" aria-label="Toggle navigation">
-        <i class="fa-solid fa-bars" />
-      </button>
-      <button class="close-menu" type="button" aria-label="Close menu" style="display: none;">
-        <i class="fa-solid fa-xmark" />
-      </button>
+      <div v-if="!isLoggedIn" class="mt-4 flex gap-2 border-t border-zinc-100 pt-4">
+        <NuxtLink to="/login" class="flex-1 rounded-full border border-zinc-200 py-2.5 text-center text-sm font-semibold" @click="mobileNavOpen = false">
+          Log in
+        </NuxtLink>
+        <NuxtLink to="/register" class="flex-1 rounded-full bg-black py-2.5 text-center text-sm font-bold text-white" @click="mobileNavOpen = false">
+          Sign up
+        </NuxtLink>
+      </div>
     </div>
-  </nav>
+  </header>
 </template>
-
-<style scoped>
-.navbar {
-  position: fixed;
-  top: 0;
-  width: 100%;
-  z-index: 1000;
-  background-color: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-.user-dropdown img {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-.dropdown-content {
-  top: 40px;
-  right: -110px;
-}
-
-.notification-wrapper .notification-dropdown {
-  display: none;
-  position: absolute;
-  background-color: white;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
-  padding: 10px 0;
-  z-index: 10;
-  width: 300px;
-  top: 70px;
-  right: 70px;
-  overflow-y: auto;
-  max-height: 600px;
-}
-.notification-header {
-  text-align: center;
-  font-size: 17px;
-  background-color: rgb(255, 255, 255);
-  padding: 13px 0px;
-  height: 52px;
-  color: rgb(34, 34, 34);
-  font-weight: bold;
-  position: sticky;
-  z-index: 1;
-  top: -12px;
-}
-
-.notification-dot {
-  position: absolute;
-  top: 38px;
-  right: 153px;
-  width: 8px;
-  height: 8px;
-  background-color: #ff0000;
-  border-radius: 50%;
-  z-index: 1;
-}
-.notification-wrapper .notification-dropdown.show {
-  display: block;
-}
-
-.notification-item {
-  display: flex;
-  align-items: center;
-  padding: 10px;
-  border-bottom: 1px solid #f1f1f1;
-  transition: background-color 0.3s;
-}
-.notification-item.unread {
-  background-color: #e7f3ff;
-}
-.notification-item:last-child {
-  border-bottom: none;
-}
-
-.notification-item:hover {
-  background-color: #f9f9f9;
-}
-.see-more {
-  text-align: center;
-  padding: 7px;
-  cursor: pointer;
-  transition: 0.5s;
-  height: 40px;
-  background-color: rgb(255, 255, 255);
-  box-shadow: rgba(0, 0, 0, 0.16) 0px -1px 4px;
-  font-size: 14px;
-  margin-bottom: -8px;
-  color: rgb(8, 112, 209);
-}
-
-.notification-image {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
-  margin-right: 10px;
-}
-
-.notification-content {
-  flex: 1;
-}
-
-.notification-message {
-  font-size: 14px;
-  font-weight: 500;
-  margin: 0;
-  color: #333;
-}
-
-.notification-time {
-  font-size: 12px;
-  color: #777;
-}
-
-.btn-custom {
-  border: 1px solid black;
-  border-radius: 30px;
-  padding: 5px 15px;
-  font-size: 16px;
-  text-decoration: none;
-  color: black;
-  margin-left: 10px;
-  transition: background-color 0.3s, color 0.3s;
-}
-
-.btn-custom:hover {
-  background-color: black;
-  color: white;
-}
-
-.login-btn {
-  font-weight: bold;
-  border: none;
-  background-color: transparent;
-}
-
-.signup-btn {
-  font-weight: bold;
-}
-</style>

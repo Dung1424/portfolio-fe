@@ -1,70 +1,70 @@
 <template>
     <!-- Nếu chủ gallery bị chặn, chỉ hiển thị blocked-content -->
-            <div v-if="isGalleryOwnerBlocked" class="blocked-content">
-                <i class="fa-solid fa-circle-xmark blocked-icon"></i>
-                <h2>Something went wrong</h2>
-                <p>Please refresh the page to try again.</p>
+            <div v-if="isGalleryOwnerBlocked" class="flex h-screen flex-col items-center justify-center bg-[#f5f5f5] text-center">
+                <i class="fa-solid fa-circle-xmark mb-5 text-[50px] text-[#ff4d4f]"></i>
+                <h2 class="mb-[10px] text-[28px] text-[#333]">Something went wrong</h2>
+                <p class="text-base text-[#666]">Please refresh the page to try again.</p>
             </div>
             <!-- Nếu không bị chặn, hiển thị nội dung gallery bình thường -->
-            <div v-else class="gallery-container">
-                <h1 class="gallery-title">{{ gallery.galleries_name || 'no title' }}</h1>
-                <h1 class="gallery-title">{{ gallery.galleries_description || 'no description' }}</h1>
-                <div class="icon-container">
-                     <span class="icon" @click="toggleLikeGallery">
-            <i :class="[gallery.liked ? 'fas' : 'fa-regular', 'fa-heart', { liked: gallery.liked }]"></i>
+            <div v-else class="bg-white p-5">
+                <h1 class="mt-[10px] text-center text-2xl text-[#333]">{{ gallery.galleries_name || 'no title' }}</h1>
+                <h1 class="mt-[10px] text-center text-2xl text-[#333]">{{ gallery.galleries_description || 'no description' }}</h1>
+                <div class="mt-[10px] flex justify-center gap-[10px]">
+                     <span class="cursor-pointer text-xl" @click="toggleLikeGallery">
+            <i :class="[gallery.liked ? 'fas' : 'fa-regular', 'fa-heart', gallery.liked ? 'text-[#ff5a5f]' : '']"></i>
             {{ gallery.total_likes }} Likes
           </span>
-                    <span class="icon" @click="copyUrl"><i class="fa-solid fa-share-nodes"></i></span>
-                    <span class="icon" @click="openReportGalleryModal"><i class="fa-regular fa-flag"></i></span>
+                    <span class="cursor-pointer text-xl" @click="copyUrl"><i class="fa-solid fa-share-nodes"></i></span>
+                    <span class="cursor-pointer text-xl" @click="openReportGalleryModal"><i class="fa-regular fa-flag"></i></span>
                 </div>
 
                 <!-- Thông tin chủ gallery -->
-                <div class="user-info" v-if="gallery.user">
+                <div class="mt-[10px] flex items-center" v-if="gallery.user">
                     <NuxtLink :to="{ name: 'MyProfile', params: { username: gallery.user.username } }">
                         <img
-                            class="avatar"
+                            class="h-10 w-10 rounded-full border border-[#ccc]"
                             :src="gallery.user.profile_picture || '/images/imageUserDefault.png'"
                             alt="User Avatar"
                         />
                     </NuxtLink>
-                    <span class="username">{{ gallery.user.name || gallery.user.username }}</span>
+                    <span class="ml-[10px] text-base font-bold text-[#333]">{{ gallery.user.name || gallery.user.username }}</span>
                 </div>
 
                 <!-- Danh sách ảnh trong gallery -->
-                <div class="gallery-grid" v-if="gallery.photo && gallery.photo.length">
-                    <div class="gallery-item" v-for="photo in gallery.photo" :key="photo.id">
-                        <img :src="photo.image_url" :alt="photo.title" />
-                        <div class="work-info">
+                <div class="mt-5 grid grid-cols-1 gap-[10px] sm:grid-cols-2 lg:grid-cols-4" v-if="gallery.photo && gallery.photo.length">
+                    <div class="group relative h-[200px] w-full overflow-visible rounded-lg shadow-[0_2px_5px_rgba(0,0,0,0.1)]" v-for="photo in gallery.photo" :key="photo.id">
+                        <img :src="photo.image_url" :alt="photo.title" class="h-full w-full rounded-lg object-cover" />
+                        <div class="absolute bottom-0 left-0 right-0 flex h-[50px] items-center bg-gradient-to-b from-black/30 to-black/60 p-[10px] text-white opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                             <NuxtLink :to="{ name: 'MyProfile', params: { username: photo.user.username } }">
                                 <img
-                                    class="user-image"
+                                    class="mr-[10px] h-[30px] w-[30px] rounded-full object-cover"
                                     :src="photo.user?.profile_picture || '/images/imageUserDefault.png'"
                                     alt="User Avatar"
                                 />
                             </NuxtLink>
-                            <span class="user-name">{{ photo.user?.name || photo.user?.username || 'Unknown' }}</span>
-                            <span class="icon-heart" @click.stop="toggleLike(photo)">
-                                <i :class="['fas', 'fa-heart', { 'liked': photo.liked }]"></i>
+                            <span class="mr-auto mt-[10px] inline-block max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap text-[17px] text-white">{{ photo.user?.name || photo.user?.username || 'Unknown' }}</span>
+                            <span class="ml-[15px] shrink-0 cursor-pointer text-xl text-white" @click.stop="toggleLike(photo)">
+                                <i :class="['fas', 'fa-heart', photo.liked ? 'text-[#ff5a5f]' : '']"></i>
                             </span>
                             <span
-                                class="icon-dots"
+                                class="ml-[15px] shrink-0 cursor-pointer text-xl text-white"
                                 @click.stop="toggleDropdown('dropdown-' + photo.id)"
-                                :class="{ 'active': activeDropdown === 'dropdown-' + photo.id }"
                             >
                                 <i class="fas fa-ellipsis-h"></i>
                             </span>
                         </div>
                         <div
                             v-if="activeDropdown === 'dropdown-' + photo.id"
-                            class="dropdown-content show"
+                            class="absolute bottom-14 right-2 z-[9999] min-w-[220px] overflow-hidden rounded-lg bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]"
                             @click.stop
                         >
-                            <ul>
-                                <li @click="handleClick('addToGallery', photo.id)">
+                            <ul class="m-0 flex list-none flex-col p-0">
+                                <li class="flex cursor-pointer items-center whitespace-nowrap px-[25px] py-[15px] text-[#222] transition hover:bg-[#1890ff] hover:text-white" @click="handleClick('addToGallery', photo.id)">
                                     <i class="fa-solid fa-plus"></i> Add to Gallery
                                 </li>
                                 <li
                                     v-if="photo.user && userStore.user && photo.user.id !== userStore.user.id"
+                                    class="flex cursor-pointer items-center whitespace-nowrap px-[25px] py-[15px] text-[#222] transition hover:bg-[#1890ff] hover:text-white"
                                     @click="toggleBlockUser(photo.user)"
                                 >
                                     <i class="fas fa-user-slash"></i>
@@ -72,6 +72,7 @@
                                 </li>
                                 <li
                                     v-if="photo.user && userStore.user && photo.user.id !== userStore.user.id"
+                                    class="flex cursor-pointer items-center whitespace-nowrap px-[25px] py-[15px] text-[#222] transition hover:bg-[#1890ff] hover:text-white"
                                     @click="toggleFollow(photo)"
                                 >
                                     <i :class="['fas', photo.following ? 'fa-user-minus' : 'fa-user-plus']"></i>
@@ -79,6 +80,7 @@
                                 </li>
                                 <li
                                     v-if="photo.user && userStore.user && photo.user.id !== userStore.user.id"
+                                    class="flex cursor-pointer items-center whitespace-nowrap px-[25px] py-[15px] text-[#222] transition hover:bg-[#1890ff] hover:text-white"
                                     @click="handleClick('reportPhoto', photo.id, photo.user.id)"
                                 >
                                     <i class="fa-solid fa-flag"></i> Report this photo
@@ -88,7 +90,7 @@
                     </div>
                 </div>
                 <!-- Nếu không có ảnh -->
-                <div v-else class="no-photos">
+                <div v-else class="mt-5 text-center text-[#888]">
                     <p>No photos in this gallery.</p>
                 </div>
 
@@ -115,9 +117,9 @@
 
 <script>
 import { galleryService } from '~/features/gallery/services/gallery.api.js'
-import AddToGalleryModal from '~/features/shared/components/AddToGalleryModal.vue'
-import ReportGalleryModal from '~/features/shared/components/ReportGalleryModal.vue'
-import ReportPhotoModal from '~/features/shared/components/ReportPhotoModal.vue'
+import AddToGalleryModal from '~/features/gallery/components/AddToGalleryModal.vue'
+import ReportGalleryModal from '~/features/gallery/components/ReportGalleryModal.vue'
+import ReportPhotoModal from '~/features/photo/components/ReportPhotoModal.vue'
 import { useLikeStore } from '~/stores/likeStore';
 import { useAuthStore } from '~/stores/authStore';
 import { useFollowStore } from '~/stores/followStore';
@@ -458,180 +460,3 @@ export default {
     },
 };
 </script>
-
-<style scoped>
-.blocked-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100vh; /* Chiếm toàn bộ chiều cao màn hình */
-    text-align: center;
-    background-color: #f5f5f5;
-}
-.blocked-icon {
-    font-size: 50px;
-    color: #ff4d4f; /* Màu đỏ để nổi bật */
-    margin-bottom: 20px;
-}
-.blocked-content h2 {
-    font-size: 28px;
-    color: #333;
-    margin-bottom: 10px;
-}
-.blocked-content p {
-    font-size: 16px;
-    color: #666;
-}
-.dropdown-content {
-    position: absolute;
-    z-index: 9999; /* Đảm bảo dropdown luôn ở trên cùng */
-    margin-left: 60px;
-    background-color: #fff; /* Có thể thêm nền nếu cần */
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
-
-.dropdown-content ul {
-    list-style: none;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    margin: 0;
-}
-
-.dropdown-content li {
-    padding: 15px 15px 15px 25px;
-    display: flex;
-    align-items: center;
-    color: #222222;
-    white-space: nowrap;
-    z-index: 1000;
-}
-
-.dropdown-content li:hover {
-    color: whitesmoke; /* Màu chữ khi hover */
-    background-color: #1890ff; /* Màu nền khi hover */
-}
-
-.dropdown-content li i {
-    margin-right: 8px;
-}
-
-.dropdown-content li:hover i {
-    color: whitesmoke;
-    background-color: #1890ff;
-}
-
-.gallery-container {
-    padding: 20px;
-    background-color: #fff;
-}
-.gallery-title {
-    text-align: center;
-    color: #333;
-    font-size: 24px;
-    margin-top: 10px;
-}
-.icon-container {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-top: 10px;
-}
-.icon {
-    font-size: 20px;
-    cursor: pointer;
-}
-.icon .fa-heart.liked {
-    color: #ff5a5f; /* Màu khi đã like */
-}
-.user-info {
-    display: flex;
-    align-items: center;
-    margin-top: 10px;
-}
-.avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    border: 1px solid #ccc;
-}
-.username {
-    margin-left: 10px;
-    color: #333;
-    font-size: 16px;
-    font-weight: bold;
-}
-.gallery-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 10px;
-    margin-top: 20px;
-}
-.gallery-item {
-    position: relative;
-    width: 100%;
-    height: 200px;
-    border-radius: 8px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-}
-.gallery-item img {
-    width: 100%;
-    height: 100%;
-    border-radius: 8px;
-    object-fit: cover;
-}
-.work-info {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.6));
-    color: #fff;
-    padding: 10px;
-    display: flex;
-    align-items: center;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    height: 50px;
-}
-.gallery-item:hover .work-info {
-    opacity: 1;
-}
-.work-info .user-image {
-    width: 30px !important;
-    height: 30px !important;
-    border-radius: 50%;
-    margin-right: 10px;
-    object-fit: cover;
-}
-.user-name {
-    margin-right: auto;
-    font-size: 17px;
-    margin-top: 10px;
-    color: #fff;
-    display: inline-block;
-    max-width: 100px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.icon-heart,
-.icon-dots {
-    font-size: 20px;
-    color: #fff;
-    margin-left: 15px;
-    cursor: pointer;
-    flex-shrink: 0;
-}
-
-.icon-heart .fa-heart.liked {
-    color: #ff5a5f; /* Màu khi đã like */
-}
-
-.no-photos {
-    text-align: center;
-    margin-top: 20px;
-    color: #888;
-}
-</style>
