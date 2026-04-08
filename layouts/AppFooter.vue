@@ -1,10 +1,3 @@
 <template>
-  <footer class="app-footer" role="contentinfo" />
+  <footer class="py-[30px] text-center" role="contentinfo"></footer>
 </template>
-
-<style scoped>
-.app-footer {
-  padding: 30px 0;
-  text-align: center;
-}
-</style>

@@ -14,20 +14,18 @@ useHead({
     },
     {
       rel: 'stylesheet',
-      href: 'https://fonts.googleapis.com/css?family=Inconsolata:400,700|Raleway:400,700&display=swap'
-    },
-    { rel: 'stylesheet', href: '/front_assets/vendor/bootstrap/css/bootstrap.min.css' },
-    { rel: 'stylesheet', href: '/front_assets/vendor/icofont/icofont.min.css' },
-    { rel: 'stylesheet', href: '/front_assets/vendor/line-awesome/css/line-awesome.min.css' },
-    { rel: 'stylesheet', href: '/front_assets/vendor/aos/aos.css' },
-    { rel: 'stylesheet', href: '/front_assets/vendor/owlcarousel/assets/owl.carousel.min.css' },
-    { rel: 'stylesheet', href: '/front_assets/css/style.css' }
+      href: 'https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap'
+    }
   ],
   htmlAttrs: { lang: 'en' }
 })
 </script>
 
 <template>
+  <!-- Chỉ client: tránh useState skeleton bị hydrate từ SSR (false) → ghi đè plugin -->
+  <ClientOnly>
+    <AppPageSkeleton />
+  </ClientOnly>
   <NuxtLayout>
     <NuxtPage />
   </NuxtLayout>

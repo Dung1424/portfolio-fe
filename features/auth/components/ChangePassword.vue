@@ -1,33 +1,112 @@
 <template>
-    <div class="my-photo-page">
-                <div class="content-layout">
-                    <Sidebar />
-                    <main>
-                        <header class="header">
-                            <div class="header-content">
-                                <span>Change Password</span>
-                            </div>
-                        </header>
-                        <div class="trial-info">
-                            <form @submit.prevent="changePassword">
-                                <div class="form-group">
-                                    <label for="current-password">Current Password</label>
-                                    <input type="password" id="current-password" v-model="password.current" required />
-                                </div>
-                                <div class="form-group">
-                                    <label for="new-password">New Password</label>
-                                    <input type="password" id="new-password" v-model="password.new" required />
-                                </div>
-                                <div class="form-group">
-                                    <label for="confirm-password">Confirm New Password</label>
-                                    <input type="password" id="confirm-password" v-model="password.confirm" required />
-                                </div>
-                                <button type="submit" class="change-button">Change Password</button>
-                            </form>
+    <div
+        :class="
+            embedded
+                ? 'flex h-full min-h-0 flex-1 flex-col'
+                : 'min-h-[calc(100vh-60px)] w-full bg-gray-50'
+        "
+    >
+        <div
+            :class="
+                embedded
+                    ? 'flex min-h-0 flex-1 flex-col'
+                    : 'flex w-full flex-col lg:min-h-[calc(100vh-60px)] lg:flex-row lg:items-stretch'
+            "
+        >
+            <Sidebar v-if="!embedded" />
+            <main
+                class="flex min-h-0 min-w-0 flex-1 flex-col bg-white lg:min-h-0"
+                :class="embedded ? '' : 'border-l border-gray-200'"
+            >
+                <div class="border-b border-gray-200 px-5 pb-4 pt-7 sm:px-6 sm:pt-8">
+                    <div class="flex items-start gap-3">
+                        <div
+                            class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#0870d1]/10 text-[#0870d1]"
+                            aria-hidden="true"
+                        >
+                            <i class="fa-solid fa-key text-lg" />
                         </div>
-                    </main>
+                        <div class="min-w-0">
+                            <h1 class="text-2xl font-bold tracking-tight text-gray-900 sm:text-[28px] sm:leading-8">
+                                Change password
+                            </h1>
+                            <p class="mt-1 text-sm font-normal text-[#0870d1]">
+                                Security
+                            </p>
+                            <p class="mt-2 max-w-xl text-sm leading-relaxed text-gray-500">
+                                Use a strong password you don’t use on other sites.
+                            </p>
+                        </div>
+                    </div>
                 </div>
-            </div>
+
+                <div class="flex min-h-0 flex-1 flex-col overflow-y-auto bg-gray-50 px-5 py-6 sm:px-6">
+                    <div
+                        class="mx-auto w-full max-w-lg rounded-2xl border border-gray-200/80 bg-white p-6 shadow-[0_2px_12px_rgba(15,23,42,0.06)] ring-1 ring-black/[0.04] sm:p-8"
+                    >
+                        <form class="space-y-5" @submit.prevent="changePassword">
+                            <div>
+                                <label
+                                    class="mb-1.5 block text-sm font-medium text-gray-800"
+                                    for="current-password"
+                                >
+                                    Current password
+                                </label>
+                                <input
+                                    id="current-password"
+                                    v-model="password.current"
+                                    type="password"
+                                    required
+                                    autocomplete="current-password"
+                                    class="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-[#0870d1] focus:outline-none focus:ring-2 focus:ring-[#0870d1]/20"
+                                    placeholder="Enter current password"
+                                />
+                            </div>
+                            <div>
+                                <label class="mb-1.5 block text-sm font-medium text-gray-800" for="new-password">
+                                    New password
+                                </label>
+                                <input
+                                    id="new-password"
+                                    v-model="password.new"
+                                    type="password"
+                                    required
+                                    autocomplete="new-password"
+                                    class="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-[#0870d1] focus:outline-none focus:ring-2 focus:ring-[#0870d1]/20"
+                                    placeholder="Enter new password"
+                                />
+                            </div>
+                            <div>
+                                <label
+                                    class="mb-1.5 block text-sm font-medium text-gray-800"
+                                    for="confirm-password"
+                                >
+                                    Confirm new password
+                                </label>
+                                <input
+                                    id="confirm-password"
+                                    v-model="password.confirm"
+                                    type="password"
+                                    required
+                                    autocomplete="new-password"
+                                    class="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-[#0870d1] focus:outline-none focus:ring-2 focus:ring-[#0870d1]/20"
+                                    placeholder="Confirm new password"
+                                />
+                            </div>
+                            <div class="border-t border-gray-100 pt-2">
+                                <button
+                                    type="submit"
+                                    class="inline-flex w-full items-center justify-center rounded-xl bg-[#0870d1] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0658b0] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0870d1]/40 focus-visible:ring-offset-2 active:scale-[0.99] sm:w-auto sm:min-w-[200px]"
+                                >
+                                    Update password
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
 </template>
 
 <script>
@@ -39,6 +118,12 @@ export default {
     name: 'ChangePassword',
     components: {
         Sidebar
+    },
+    props: {
+        embedded: {
+            type: Boolean,
+            default: false
+        }
     },
     data() {
         return {
@@ -76,13 +161,11 @@ export default {
                     duration: 5,
                 });
 
-                // Reset password fields
                 this.password.current = '';
                 this.password.new = '';
                 this.password.confirm = '';
             } catch (error) {
                 if (error.response && error.response.status === 422) {
-                    // Lỗi xác thực
                     const errors = error.response.data.errors;
                     for (const key of Object.keys(errors)) {
                         notification.error({
@@ -93,7 +176,6 @@ export default {
                         });
                     }
                 } else {
-                    // Lỗi không mong muốn
                     notification.error({
                         message: 'Error',
                         description: error.response ? error.response.data.message : 'An unexpected error occurred.',
@@ -106,91 +188,3 @@ export default {
     }
 }
 </script>
-
-<style scoped>
-.my-photo-page {
-    padding: 20px;
-    height: calc(150vh - 100px);
-    display: flex;
-    flex-direction: column;
-}
-
-.content-layout {
-    display: flex;
-    height: 100%;
-    margin-top: 50px;
-}
-
-main {
-    flex: 1;
-    padding-left: 0;
-    background-color: #f9f9f9;
-    border-radius: 8px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    display: flex;
-    flex-direction: column;
-}
-
-.header {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    background-color: #ffffff;
-    padding: 48px 40px 10px;
-    border-radius: 8px;
-    margin: 0;
-}
-
-.header-content {
-    display: flex;
-    flex-direction: column;
-}
-
-.header-content span {
-    font-size: 24px;
-    line-height: 28px;
-    font-weight: bold;
-    text-transform: none;
-    margin: 0px;
-    color: rgb(34, 34, 34);
-}
-
-.trial-info {
-    margin-top: 30px;
-    padding: 20px;
-    text-align: left;
-    background-color: #fff;
-    flex-shrink: 0;
-    border-radius: 8px;
-}
-
-.form-group {
-    margin-bottom: 15px;
-}
-
-label {
-    display: block;
-    margin-bottom: 5px;
-}
-
-input[type="password"] {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-}
-
-.change-button {
-    background-color: #007bff;
-    color: white;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-}
-
-.change-button:hover {
-    background-color: #0056b3;
-}
-</style>

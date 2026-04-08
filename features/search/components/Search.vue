@@ -1,41 +1,111 @@
 <template>
-    <div class="site-section">
-                <div class="results-container">
-                    <div class="results">
-                        Results: <strong>{{ totalResults }} photos</strong>
-                    </div>
+  <section class="w-full bg-white">
+    <div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <p class="text-sm font-medium text-zinc-700">
+          Results:
+          <strong class="font-semibold text-zinc-900">{{ totalResults }} photos</strong>
+        </p>
+        <p
+          v-if="$route.query.q"
+          class="truncate text-sm text-zinc-500"
+        >
+          Query: <span class="font-medium text-zinc-700">"{{ $route.query.q }}"</span>
+        </p>
+      </div>
 
-                    <!-- Hiển thị nếu có kết quả -->
-                    <div v-if="totalResults > 0" class="image-grid" :class="{ 'single-result': totalResults === 1 }">
-                        <div class="image-item" v-for="(image, index) in images" :key="index">
-                            <NuxtLink :to="{ name: 'PhotoDetail', params: { token: image.photo_token } }">
-                            <img :src="image.image_url" alt="Search Result" class="search-image" />
-                            </NuxtLink>
-                            <div class="work-info">
-                                <div class="user-info2">
-                                    <NuxtLink :to="{ name: 'MyProfile', params: { username: image.user.username } }">
-                                    <img class="user-image2" :src="getProfilePicture(image.user.profile_picture)" style="width: 30px; height: 30px">
-                                    </NuxtLink>
-                                    <span class="user-name2">{{ image.user.username }}</span>
-                                    <span class="icon-heart2" @click="toggleLike(image)">
-                                        <i :class="['fas', 'fa-heart', { 'liked': image.liked }]"></i>
-                                    </span>
-                                    <span class="icon-dots2">
-                                       <i @click="handleClick('addToGallery', image.id)" class="fa-regular fa-square-plus"></i>
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+      <!-- Hiển thị nếu có kết quả -->
+      <div
+        v-if="totalResults > 0"
+        class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+      >
+        <div
+          v-for="(image, index) in images"
+          :key="index"
+          class="group relative overflow-hidden rounded-xl bg-zinc-100 shadow-sm ring-1 ring-zinc-200/70"
+        >
+          <NuxtLink
+            :to="{ name: 'PhotoDetail', params: { token: image.photo_token } }"
+            class="block"
+          >
+            <img
+              :src="image.image_url"
+              alt="Search Result"
+              class="h-64 w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+              loading="lazy"
+              decoding="async"
+            >
+          </NuxtLink>
 
-                    <!-- Hiển thị nếu không có kết quả -->
-                    <div v-else class="no-results">
-                        <i class="fas fa-search"></i>
-                        <p>No results for "<strong>{{ $route.query.q }}</strong>"</p>
-                        <p>Check the spelling or try modifying your search</p>
-                    </div>
-                </div>
+          <!-- Overlay info -->
+          <div
+            class="pointer-events-none absolute inset-x-0 bottom-0 translate-y-3 bg-gradient-to-b from-black/0 via-black/30 to-black/70 px-3 py-3 opacity-0 transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100"
+          >
+            <div class="pointer-events-auto flex items-center gap-2">
+              <NuxtLink
+                :to="{ name: 'MyProfile', params: { username: image.user.username } }"
+                class="shrink-0"
+                aria-label="View profile"
+              >
+                <img
+                  :src="getProfilePicture(image.user.profile_picture)"
+                  alt=""
+                  class="h-8 w-8 rounded-full object-cover ring-2 ring-white/70"
+                  loading="lazy"
+                  decoding="async"
+                >
+              </NuxtLink>
+
+              <span
+                class="min-w-0 flex-1 truncate text-sm font-semibold text-white"
+                :title="image.user.username"
+              >
+                {{ image.user.username }}
+              </span>
+
+              <button
+                type="button"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                aria-label="Like"
+                @click="toggleLike(image)"
+              >
+                <i
+                  class="fas fa-heart text-[16px]"
+                  :class="image.liked ? 'text-rose-400' : 'text-white'"
+                />
+              </button>
+
+              <button
+                type="button"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                aria-label="Add to gallery"
+                @click="handleClick('addToGallery', image.id)"
+              >
+                <i class="fa-regular fa-square-plus text-[16px]" />
+              </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hiển thị nếu không có kết quả -->
+      <div
+        v-else
+        class="flex min-h-[60vh] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 text-center"
+      >
+        <div class="flex h-14 w-14 items-center justify-center rounded-full bg-white text-zinc-400 shadow-sm ring-1 ring-zinc-200/70">
+          <i class="fas fa-search text-xl" />
+        </div>
+        <p class="mt-2 text-base font-semibold text-zinc-800">
+          No results for
+          <span class="font-bold">"{{ $route.query.q }}"</span>
+        </p>
+        <p class="text-sm text-zinc-500">
+          Check the spelling or try modifying your search.
+        </p>
+      </div>
+    </div>
+  </section>
 
     <AddToGalleryModal
         :is-visible="showAddToGallery"
@@ -45,7 +115,7 @@
 </template>
 
 <script>
-import AddToGalleryModal from '~/features/shared/components/AddToGalleryModal.vue'
+import AddToGalleryModal from '~/features/gallery/components/AddToGalleryModal.vue'
 import { useRequireLogin } from '~/composables/useRequireLogin'
 import { useLikeStore } from '~/stores/likeStore';
 import { searchService } from '~/features/search/services/search.api.js'
@@ -166,182 +236,3 @@ export default {
     }
 };
 </script>
-
-<style scoped>
-.site-section {
-    padding: 20px;
-}
-
-.no-results {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    height: 60vh; /* Chiều cao 60% màn hình */
-    text-align: center;
-    color: #666;
-   margin-left: 500px;
-}
-
-.no-results i {
-    font-size: 48px;
-    margin-bottom: 10px;
-    display: block;
-    color: #888;
-}
-
-.no-results p {
-    font-size: 18px;
-    margin: 5px 0;
-}
-
-.results-container {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-}
-
-.results {
-    font-size: 18px;
-    margin-bottom: 20px;
-    color: #333;
-}
-
-.image-grid {
-    display: flex;
-    flex-wrap: wrap; /* Cho phép hình ảnh xuống dòng */
-    gap: 15px; /* Khoảng cách giữa các hình ảnh */
-    width: 100%;
-}
-
-.image-grid.single-result .image-item {
-    flex: 1 1 100%; /* Chiếm toàn bộ chiều rộng khi chỉ có một kết quả */
-    max-width: 100%; /* Đảm bảo không vượt quá 100% chiều rộng */
-}
-
-.image-item {
-    position: relative;
-    flex: 1 1 calc(25% - 15px); /* Mỗi ảnh chiếm 25% chiều rộng, trừ khoảng cách */
-    max-width: calc(25% - 15px); /* Đảm bảo không vượt quá 25% chiều rộng */
-}
-
-.search-image {
-    width: 100%;
-    height: 250px; /* Điều chỉnh chiều cao */
-    object-fit: cover; /* Đảm bảo hình ảnh phủ đầy thẻ */
-    border-radius: 8px; /* Bo góc */
-}
-.icon-heart2 .fa-heart.liked {
-    color: #ff5a5f; /* Màu khi đã like */
-}
-.work-info {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 25%;
-    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.6));
-    padding: 10px;
-    border-radius: 0 0 8px 8px;
-    opacity: 0;
-    visibility: hidden;
-    transform: translateY(10px); /* Dịch xuống ban đầu */
-    transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out, transform 0.3s ease-in-out;
-}
-
-/* Khi hover vào image-item, hiện gradient và di chuyển lên */
-.image-item:hover .work-info {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0); /* Di chuyển lên */
-}
-
-.user-info2 {
-    display: flex;
-    align-items: center;
-    flex-direction: row;
-}
-
-.user-image2, .user-name2, .icon-heart2, .icon-dots2 {
-    pointer-events: auto; /* Cho phép tương tác */
-}
-
-.user-image2 {
-    border-radius: 50%;
-    margin-right: 10px;
-}
-
-.user-name2 {
-    font-size: 18px;
-    color: #fff;
-    margin-right: auto;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 120px;
-}
-
-.icon-heart2, .icon-dots2 {
-    flex-grow: 0;
-    margin-left: 10px;
-    font-size: 18px;
-    margin-right: 10px;
-    position: relative;
-    color: #fff; /* Icon màu trắng */
-}
-
-.icon-heart2:hover {
-    cursor: pointer;
-}
-
-.icon-heart2 .fa-heart {
-    color: #fff; /* Màu trắng ban đầu */
-}
-
-.icon-heart2 .fa-heart.liked {
-    color: #ff5a5f; /* Màu khi đã like */
-}
-
-.icon-dots2 {
-    position: relative;
-    display: inline-block;
-}
-
-.dropdown-content ul {
-    list-style: none;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    margin: 0;
-}
-
-.dropdown-content li {
-    padding: 15px 15px 15px 25px;
-    display: flex;
-    align-items: center;
-    color: #222222;
-    white-space: nowrap;
-    z-index: 1000;
-}
-
-.dropdown-content li:hover {
-    color: whitesmoke; /* Màu chữ khi hover */
-    background-color: #1890ff; /* Màu nền khi hover */
-}
-
-.dropdown-content li i {
-    margin-right: 8px;
-}
-
-.dropdown-content li:hover i {
-    color: whitesmoke;
-    background-color: #1890ff;
-}
-
-/* Thêm CSS cho trạng thái active */
-.icon-dots2 .fa-ellipsis-h.active {
-    color: whitesmoke;
-    background-color: #1890ff;
-    border-radius: 50%;
-    padding: 5px;
-}
-</style>

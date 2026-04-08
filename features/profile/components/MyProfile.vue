@@ -1,137 +1,323 @@
 <template>
-    <div class="site-section">
-                <!-- Phần profile info không thay đổi -->
-                <div class="cover-photo">
-                    <img :src="coverPhotoUrl" alt="Cover Photo" class="cover-img" />
-                </div>
-                <div class="profile-info">
-                    <div class="profile-avatar">
-                        <img :src="profilePictureUrl" alt="Profile Avatar" class="avatar-img" />
-                    </div>
-                    <div class="screen-right-icons">
-                        <i @click="openUpdateProfileModal(user.id)" class="fa-solid fa-pencil" v-if="isMyProfile"></i>
-                        <i class="fa-solid fa-share-nodes" @click="copyProfileLink"></i>
-                        <i class="fa-solid fa-ellipsis" @click.stop="toggleDropdown('dropdown-' + user.id)"
-                           :class="{'active': activeDropdown === 'dropdown-' + user.id}"></i>
-                    </div>
-                    <div v-if="activeDropdown === 'dropdown-' + user.id" class="dropdown-content show" @click.stop>
-                        <ul>
-                            <li v-if="isMyProfile" @click="goToMyPhotos">
-                                <i class="fas fa-camera"></i> My Photos
-                            </li>
-                            <li v-if="isMyProfile" @click="goToMyGalleries">
-                                <i class="fas fa-images"></i> My Galleries
-                            </li>
-                            <li v-if="!isMyProfile" @click="toggleBlockUser">
-                                <i class="fa-solid fa-user-large-slash"></i> {{ isBlocked ? 'Unblock user' : 'Block user' }}
-                            </li>
-                        </ul>
-                    </div>
-                    <div class="profile-details">
-                        <h1 class="profile-name">{{ user.name ? user.name : user.username }}</h1>
-                        <p class="profile-location">
-                            <i class="fa-solid fa-location-dot"></i> {{ user.location ? user.location : 'no location' }}
-                        </p>
-                        <button v-if="!isMyProfile && isBlocked" @click="toggleBlockUser" class="unblock-button">
-                            Unblock
-                        </button>
-                        <button v-if="!isMyProfile && !isBlocked" @click="toggleFollow" class="follow-button">
-                            {{ isFollowing ? 'Unfollow' : 'Follow' }}
-                        </button>
-                        <p class="profile-bio">
-                            <span v-if="user.bio">
-                                <span v-if="isBioExpanded">{{ user.bio }}</span>
-                                <span v-else>{{ truncatedBio }}</span>
-                                <a v-if="user.bio.length > 100" href="#" class="read-more" @click.prevent="toggleBio">
-                                    {{ isBioExpanded ? 'Read less' : 'Read more' }}
-                                </a>
-                            </span>
-                            <span v-else>No bio</span>
-                        </p>
-                        <div class="profile-stats">
-                            <span @click="showFollowersPopup"><strong>{{ userFollowersCount }}</strong> Followers</span>
-                            <span @click="showFollowingPopup"><strong>{{ userFollowingCount }}</strong> Following</span>
-                            <span><strong>{{ formattedPhotoLikes }}</strong> Photo Likes</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="tabs" v-if="!isBlocked && (photos.length > 0 || galleries.length > 0)">
-                    <a class="tab" :class="{ active: activeContent === 'photos' }" @click.prevent="activeTab = 'photos'" v-if="photos.length > 0">
-                        Photos <span>{{ photos.length }}</span>
-                    </a>
-                    <a class="tab" :class="{ active: activeContent === 'galleries' }" @click.prevent="activeTab = 'galleries'" v-if="galleries.length > 0">
-                        Galleries <span>{{ galleries.length }}</span>
-                    </a>
-                </div>
-                <div v-if="activeContent === 'photos' && !isBlocked">
-                    <PhotoGrid :photos="photos" :checkLogin="checkLogin" />
-                </div>
-                <div v-else-if="activeContent === 'galleries' && !isBlocked">
-                    <GalleryGrid :galleries="galleries" />
+    <div
+        class="min-h-screen overflow-x-hidden bg-white font-sans text-zinc-900 antialiased [font-family:ui-sans-serif,system-ui,sans-serif]"
+    >
+        <section class="relative w-full pt-0">
+            <div
+                class="relative left-1/2 w-screen max-w-[100vw] -translate-x-1/2 overflow-hidden"
+            >
+                <div
+                    class="relative h-[min(48vh,600px)] min-h-[260px] w-full overflow-hidden bg-zinc-900 sm:min-h-[320px] lg:h-[min(52vh,680px)]"
+                >
+                    <img
+                        :src="coverPhotoUrl"
+                        alt=""
+                        class="h-full w-full object-cover object-center"
+                    />
+                    <div
+                        class="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/45 via-black/15 to-transparent"
+                        aria-hidden="true"
+                    />
                 </div>
             </div>
 
-    <UpdateProfileModal
-        :isVisible="showUpdateModal"
-        :user-id="selectedUserId"
-        @close="closeUpdateProfileModal"
-        @update="reloadProfileData"
-    />
-    <!-- Popup hiển thị danh sách Followers -->
-    <div v-if="followersPopupVisible" class="popup-overlay" @click.self="closeFollowersPopup">
-        <div class="popup-content">
-            <div class="popup-header">
-                <h3>{{ user.name || user.username }}'s Followers</h3>
-                <button @click="closeFollowersPopup" class="popup-close">×</button>
-            </div>
-            <div v-if="followersData.length > 0" class="popup-list">
-                <div v-for="follower in followersData" :key="follower.id" class="popup-item">
-                    <NuxtLink :to="{ name: 'MyProfile', params: { username: follower.username } }">
-                        <img :src="follower.profile_picture ? `${apiOrigin}/images/avatars/${follower.profile_picture.split('/').pop()}` : '/images/imageUserDefault.png'" alt="Avatar" class="popup-avatar" />
-                    </NuxtLink>
-                    <div class="popup-user-info">
-                        <span class="popup-username">{{ follower.name }}</span>
-                        <span class="popup-followers">{{ follower.followers_count || 0 }} Followers</span>
+            <div
+                class="relative z-10 mx-auto max-w-5xl px-4 sm:px-6"
+            >
+                <div
+                    class="relative -mt-14 flex min-h-[120px] w-full flex-col items-center gap-3 pb-2 sm:-mt-[4.75rem] sm:min-h-[132px] sm:flex-row sm:items-center sm:justify-center sm:gap-0"
+                >
+                    <img
+                        :src="profilePictureUrl"
+                        alt=""
+                        class="relative z-10 h-[120px] w-[120px] shrink-0 rounded-full border-4 border-white object-cover shadow-[0_8px_30px_rgba(0,0,0,0.18)] sm:h-[132px] sm:w-[132px]"
+                    />
+                    <div
+                        class="flex items-center justify-center gap-5 text-[22px] text-zinc-800 sm:absolute sm:bottom-3 sm:right-0 sm:justify-end sm:pr-0.5"
+                    >
+                        <button
+                            v-if="isMyProfile"
+                            type="button"
+                            class="rounded-lg p-1.5 transition hover:bg-zinc-100 hover:text-zinc-950"
+                            aria-label="Edit profile"
+                            @click="openUpdateProfileModal"
+                        >
+                            <i class="fa-solid fa-pencil" />
+                        </button>
+                        <button
+                            type="button"
+                            class="rounded-lg p-1.5 transition hover:bg-zinc-100 hover:text-zinc-950"
+                            aria-label="Copy profile link"
+                            @click="copyProfileLink"
+                        >
+                            <i class="fa-solid fa-share-nodes" />
+                        </button>
+                        <div class="relative">
+                            <button
+                                type="button"
+                                class="rounded-lg p-1.5 transition hover:bg-zinc-100"
+                                :class="{ 'bg-zinc-100': activeDropdown === 'dropdown-' + user.id }"
+                                aria-label="More options"
+                                @click.stop="toggleDropdown('dropdown-' + user.id)"
+                            >
+                                <i class="fa-solid fa-ellipsis" />
+                            </button>
+                            <div
+                                v-if="activeDropdown === 'dropdown-' + user.id"
+                                class="absolute right-0 top-full z-[1001] mt-2 min-w-[220px] overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-xl ring-1 ring-black/5"
+                                @click.stop
+                            >
+                                <ul class="m-0 flex list-none flex-col p-0">
+                                    <li
+                                        v-if="isMyProfile"
+                                        class="flex cursor-pointer items-center px-4 py-3 pl-6 text-sm text-zinc-800 transition hover:bg-zinc-100"
+                                        @click="goToMyPhotos"
+                                    >
+                                        <i class="fas fa-camera mr-2 w-4" /> My Photos
+                                    </li>
+                                    <li
+                                        v-if="isMyProfile"
+                                        class="flex cursor-pointer items-center px-4 py-3 pl-6 text-sm text-zinc-800 transition hover:bg-zinc-100"
+                                        @click="goToMyGalleries"
+                                    >
+                                        <i class="fas fa-images mr-2 w-4" /> My Galleries
+                                    </li>
+                                    <li
+                                        v-if="!isMyProfile"
+                                        class="flex cursor-pointer items-center px-4 py-3 pl-6 text-sm text-zinc-800 transition hover:bg-zinc-100"
+                                        @click="toggleBlockUser"
+                                    >
+                                        <i class="fa-solid fa-user-large-slash mr-2 w-4" />
+                                        {{ isBlocked ? 'Unblock user' : 'Block user' }}
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
-                    <button v-if="follower.id !== userStore.user.id" @click.stop="toggleFollowUser(follower.username)" class="popup-follow-button">
-                        {{ followStore.followingList.includes(follower.id) ? 'Unfollow' : 'Follow' }}
-                    </button>
+                </div>
+
+                <div class="mx-auto flex w-full max-w-2xl flex-col items-center px-2 pb-2 pt-1 text-center">
+                        <h1 class="text-[28px] font-bold tracking-tight text-zinc-900 sm:text-[32px]">
+                            {{ user.name ? user.name : user.username }}
+                        </h1>
+                        <p class="mt-1 flex items-center justify-center gap-1.5 text-sm text-zinc-500">
+                            <i class="fa-solid fa-location-dot text-zinc-400" />
+                            {{ user.location ? user.location : 'no location' }}
+                        </p>
+                        <button
+                            v-if="!isMyProfile && isBlocked"
+                            type="button"
+                            class="mt-2 inline-flex min-h-[38px] min-w-[120px] cursor-pointer items-center justify-center rounded-lg border-2 border-red-500 bg-white px-5 py-2 text-sm font-semibold text-red-500 transition hover:bg-zinc-100"
+                            @click="toggleBlockUser"
+                        >
+                            Unblock
+                        </button>
+                        <button
+                            v-if="!isMyProfile && !isBlocked"
+                            type="button"
+                            class="mt-2 inline-flex min-h-[38px] min-w-[120px] cursor-pointer items-center justify-center rounded-lg border-2 border-[#0870d1] bg-[#0870d1] px-5 py-2 text-sm font-semibold text-white transition hover:brightness-[0.96] active:brightness-[0.92]"
+                            @click="toggleFollow"
+                        >
+                            {{ isFollowing ? 'Unfollow' : 'Follow' }}
+                        </button>
+                        <p class="mt-2 max-w-xl text-sm leading-relaxed text-zinc-700 sm:text-base">
+                            <span v-if="user.bio">
+                                <span v-if="isBioExpanded">{{ user.bio }}</span>
+                                <span v-else>{{ truncatedBio }}</span>
+                                <a
+                                    v-if="user.bio.length > 100"
+                                    href="#"
+                                    class="ml-1 text-blue-600 underline"
+                                    @click.prevent="toggleBio"
+                                >
+                                    {{ isBioExpanded ? 'Read less' : 'Read more' }}
+                                </a>
+                            </span>
+                            <span v-else class="text-zinc-500">No bio</span>
+                        </p>
+                        <div
+                            class="mt-2 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-sm text-zinc-600"
+                        >
+                            <button
+                                type="button"
+                                class="rounded-md px-1.5 py-1 text-left transition hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400/40"
+                                @click="showFollowersPopup"
+                            >
+                                <span class="font-semibold tabular-nums text-zinc-900">{{ userFollowersCount }}</span>
+                                <span class="ml-1.5 font-normal">Followers</span>
+                            </button>
+                            <span class="hidden h-4 w-px bg-zinc-200 sm:inline" aria-hidden="true" />
+                            <button
+                                type="button"
+                                class="rounded-md px-1.5 py-1 text-left transition hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400/40"
+                                @click="showFollowingPopup"
+                            >
+                                <span class="font-semibold tabular-nums text-zinc-900">{{ userFollowingCount }}</span>
+                                <span class="ml-1.5 font-normal">Following</span>
+                            </button>
+                            <span class="hidden h-4 w-px bg-zinc-200 sm:inline" aria-hidden="true" />
+                            <span class="tabular-nums">
+                                <span class="font-semibold text-zinc-900">{{ formattedPhotoLikes }}</span>
+                                <span class="ml-1.5 font-normal">Photo Likes</span>
+                            </span>
+                        </div>
+                    </div>
+            </div>
+
+            <!-- Tabs: cùng vùng header nền trắng, tách hẳn khỏi khung xám ảnh/gallery (kiểu 500px) -->
+            <div
+                v-if="!isBlocked && (photos.length > 0 || galleries.length > 0)"
+                class="w-full border-b border-zinc-200 bg-white"
+            >
+                <div class="mx-auto flex max-w-7xl justify-center gap-10 px-4 pt-3 pb-0 sm:px-6 lg:px-8">
+                    <a
+                        v-if="photos.length > 0"
+                        href="#"
+                        class="-mb-px inline-flex border-b-2 border-transparent pb-2.5 text-base no-underline transition-colors"
+                        :class="activeContent === 'photos'
+                            ? 'border-[#0870d1] font-bold text-[#0870d1]'
+                            : 'font-bold text-zinc-500 hover:text-zinc-800'"
+                        @click.prevent="activeTab = 'photos'"
+                    >
+                        Photos
+                        <span :class="activeContent === 'photos' ? 'text-[#0870d1]' : 'text-zinc-500'">&nbsp;{{ photos.length }}</span>
+                    </a>
+                    <a
+                        v-if="galleries.length > 0"
+                        href="#"
+                        class="-mb-px inline-flex border-b-2 border-transparent pb-2.5 text-base no-underline transition-colors"
+                        :class="activeContent === 'galleries'
+                            ? 'border-[#0870d1] font-bold text-[#0870d1]'
+                            : 'font-bold text-zinc-500 hover:text-zinc-800'"
+                        @click.prevent="activeTab = 'galleries'"
+                    >
+                        Galleries
+                        <span :class="activeContent === 'galleries' ? 'text-[#0870d1]' : 'text-zinc-500'">&nbsp;{{ galleries.length }}</span>
+                    </a>
                 </div>
             </div>
-            <div v-else class="popup-no-data">No followers found.</div>
+
+            <div class="mx-auto w-full max-w-7xl bg-[#f7f8fa] pb-10">
+                <div v-if="activeContent === 'photos' && !isBlocked" class="w-full">
+                    <ProfilePhotoGrid :photos="photos" :check-login="checkLogin" />
+                </div>
+                <div v-else-if="activeContent === 'galleries' && !isBlocked" class="px-4 sm:px-6 lg:px-8">
+                    <ProfileGalleryGrid :galleries="galleries" />
+                </div>
+            </div>
+        </section>
+
+        <UpdateProfileModal
+            :is-visible="showUpdateModal"
+            @close="closeUpdateProfileModal"
+            @update="reloadProfileData"
+        />
+
+        <div
+            v-if="followersPopupVisible"
+            class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4"
+            @click.self="closeFollowersPopup"
+        >
+            <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl ring-1 ring-black/5">
+                <div class="flex items-center justify-between border-b-2 border-neutral-100 px-5 py-4">
+                    <h3 class="m-0 text-xl font-bold text-zinc-800">
+                        {{ user.name || user.username }}'s Followers
+                    </h3>
+                    <button
+                        type="button"
+                        class="flex h-8 w-8 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-3xl leading-none text-zinc-500 hover:text-zinc-800"
+                        @click="closeFollowersPopup"
+                    >
+                        ×
+                    </button>
+                </div>
+                <div v-if="followersData.length > 0" class="px-4 pb-4 pt-2">
+                    <div
+                        v-for="follower in followersData"
+                        :key="follower.id"
+                        class="flex items-center border-b-2 border-neutral-100 py-4 last:border-0"
+                    >
+                        <NuxtLink :to="{ name: 'MyProfile', params: { username: follower.username } }">
+                            <img
+                                :src="follower.profile_picture ? `${apiOrigin}/images/avatars/${follower.profile_picture.split('/').pop()}` : '/images/imageUserDefault.png'"
+                                alt=""
+                                class="mr-4 h-10 w-10 rounded-full object-cover"
+                            />
+                        </NuxtLink>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-base font-bold text-zinc-800">{{ follower.name }}</span>
+                            <span class="block text-sm text-zinc-500">{{ follower.followers_count || 0 }} Followers</span>
+                        </div>
+                        <button
+                            v-if="follower.id !== userStore.user.id"
+                            type="button"
+                            class="ml-3 shrink-0 cursor-pointer rounded-lg border-0 bg-[#0870d1] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-[0.96] active:brightness-[0.92]"
+                            @click.stop="toggleFollowUser(follower.username)"
+                        >
+                            {{ followStore.followingList.includes(follower.id) ? 'Unfollow' : 'Follow' }}
+                        </button>
+                    </div>
+                </div>
+                <div v-else class="px-8 py-10 text-center text-base text-zinc-500">No followers found.</div>
+            </div>
         </div>
-    </div>
-    <!-- Popup hiển thị danh sách Following -->
-    <div v-if="followingPopupVisible" class="popup-overlay" @click.self="closeFollowingPopup">
-        <div class="popup-content">
-            <div class="popup-header">
-                <h3>{{ user.name || user.username }}'s Following</h3>
-                <button @click="closeFollowingPopup" class="popup-close">×</button>
-            </div>
-            <div v-if="followingData.length > 0" class="popup-list">
-                <div v-for="following in followingData" :key="following.id" class="popup-item">
-                    <NuxtLink :to="{ name: 'MyProfile', params: { username: following.username } }">
-                        <img :src="following.profile_picture ? `${apiOrigin}/images/avatars/${following.profile_picture.split('/').pop()}` : '/images/imageUserDefault.png'" alt="Avatar" class="popup-avatar" />
-                    </NuxtLink>
-                    <div class="popup-user-info">
-                        <span class="popup-username">{{ following.name }}</span>
-                        <span class="popup-followers">{{ following.followers_count || 0 }} Followers</span>
-                    </div>
-                    <button v-if="following.id !== userStore.user.id" @click.stop="toggleFollowUser(following.username)" class="popup-follow-button">
-                        {{ followStore.followingList.includes(following.id) ? 'Unfollow' : 'Follow' }}
+
+        <div
+            v-if="followingPopupVisible"
+            class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4"
+            @click.self="closeFollowingPopup"
+        >
+            <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl ring-1 ring-black/5">
+                <div class="flex items-center justify-between border-b-2 border-neutral-100 px-5 py-4">
+                    <h3 class="m-0 text-xl font-bold text-zinc-800">
+                        {{ user.name || user.username }}'s Following
+                    </h3>
+                    <button
+                        type="button"
+                        class="flex h-8 w-8 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-3xl leading-none text-zinc-500 hover:text-zinc-800"
+                        @click="closeFollowingPopup"
+                    >
+                        ×
                     </button>
                 </div>
+                <div v-if="followingData.length > 0" class="px-4 pb-4 pt-2">
+                    <div
+                        v-for="following in followingData"
+                        :key="following.id"
+                        class="flex items-center border-b-2 border-neutral-100 py-4 last:border-0"
+                    >
+                        <NuxtLink :to="{ name: 'MyProfile', params: { username: following.username } }">
+                            <img
+                                :src="following.profile_picture ? `${apiOrigin}/images/avatars/${following.profile_picture.split('/').pop()}` : '/images/imageUserDefault.png'"
+                                alt=""
+                                class="mr-4 h-10 w-10 rounded-full object-cover"
+                            />
+                        </NuxtLink>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-base font-bold text-zinc-800">{{ following.name }}</span>
+                            <span class="block text-sm text-zinc-500">{{ following.followers_count || 0 }} Followers</span>
+                        </div>
+                        <button
+                            v-if="following.id !== userStore.user.id"
+                            type="button"
+                            class="ml-3 shrink-0 cursor-pointer rounded-lg border-0 bg-[#0870d1] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-[0.96] active:brightness-[0.92]"
+                            @click.stop="toggleFollowUser(following.username)"
+                        >
+                            {{ followStore.followingList.includes(following.id) ? 'Unfollow' : 'Follow' }}
+                        </button>
+                    </div>
+                </div>
+                <div v-else class="px-8 py-10 text-center text-base text-zinc-500">No following found.</div>
             </div>
-            <div v-else class="popup-no-data">No following found.</div>
         </div>
     </div>
 </template>
 
 <script>
 import { profileService } from '~/features/profile/services/profile.api.js'
-import UpdateProfileModal from '~/features/account/components/UpdateProfileModal.vue'
-import PhotoGrid from '~/features/shared/components/PhotoGrid.vue'
-import GalleryGrid from '~/features/shared/components/GalleryGrid.vue'
+import UpdateProfileModal from '~/features/account/components/profile/UpdateProfileModal.vue'
+import ProfilePhotoGrid from '~/features/profile/components/ProfilePhotoGrid.vue'
+import ProfileGalleryGrid from '~/features/profile/components/ProfileGalleryGrid.vue'
 import { useAuthStore } from '~/stores/authStore';
 import { useUserStore } from '~/stores/userStore.js';
 import { useFollowStore } from '~/stores/followStore.js';
@@ -141,11 +327,11 @@ import { ExclamationCircleOutlined } from '@ant-design/icons-vue';
 import { h } from 'vue';
 
 export default {
-    name: "MyProfile",
+    name: "MyProfileView",
     components: {
         UpdateProfileModal,
-        PhotoGrid,
-        GalleryGrid
+        ProfilePhotoGrid,
+        ProfileGalleryGrid,
     },
     data() {
         return {
@@ -157,7 +343,6 @@ export default {
             photoLikesCount: 0,
             isBioExpanded: false,
             showUpdateModal: false,
-            selectedUserId: null,
             isMyProfile: false,
             isFollowing: false,
             isBlocked: false,
@@ -231,9 +416,6 @@ export default {
             }
         }
     },
-    async mounted() {
-        await this.reloadProfileData();
-    },
     methods: {
         async checkLogin() {
             const authStore = useAuthStore();
@@ -246,8 +428,13 @@ export default {
         },
         async reloadProfileData() {
             await this.fetchUserData();
-            this.fetchPhotos();
-            this.fetchGalleries();
+            await Promise.all([this.fetchPhotos(), this.fetchGalleries(), this.fetchTotalLikes()]);
+
+            // Token / localStorage / follow–block: chỉ trên client (SSR không có localStorage)
+            if (!import.meta.client) {
+                return;
+            }
+
             await this.checkIfBlocked();
             await this.checkIfMyProfile();
             if (!this.isMyProfile) {
@@ -257,8 +444,7 @@ export default {
             const username = this.$route.params.username;
             await followStore.fetchUserFollowersList(username);
             await followStore.fetchUserFollowingList(username);
-            await followStore.fetchFollowingList(); // Làm mới danh sách người mà người dùng hiện tại theo dõi
-            await this.fetchTotalLikes();
+            await followStore.fetchFollowingList();
         },
         toggleDropdown(id) {
             this.activeDropdown = this.activeDropdown === id ? null : id;
@@ -287,6 +473,9 @@ export default {
             }
         },
         async checkIfBlocked() {
+            if (!import.meta.client) {
+                return;
+            }
             const blockStore = useBlockStore();
             await blockStore.fetchBlockedUsers();
             this.isBlocked = blockStore.blockedUsers.includes(this.user.id);
@@ -329,8 +518,7 @@ export default {
                 onCancel() {},
             });
         },
-        openUpdateProfileModal(id) {
-            this.selectedUserId = id;
+        openUpdateProfileModal() {
             this.showUpdateModal = true;
         },
         closeUpdateProfileModal() {
@@ -396,10 +584,12 @@ export default {
         async fetchGalleries() {
             const username = this.$route.params.username;
             try {
-                const token = localStorage.getItem("token");
                 let headers = {};
-                if (token) {
-                    headers = { Authorization: `Bearer ${token}` };
+                if (import.meta.client) {
+                    const token = localStorage.getItem('token');
+                    if (token) {
+                        headers = { Authorization: `Bearer ${token}` };
+                    }
                 }
                 const response = await profileService.fetchGalleries(username, { headers });
                 this.galleries = response.data;
@@ -430,6 +620,10 @@ export default {
                 });
         },
         async checkIfMyProfile() {
+            this.isMyProfile = false;
+            if (!import.meta.client) {
+                return;
+            }
             const userStore = useUserStore();
             await userStore.fetchUserData();
             const authUser = userStore.user;
@@ -438,10 +632,10 @@ export default {
             }
         },
         goToMyPhotos() {
-            this.$router.push({ name: 'MyPhoto' });
+            this.$router.push({ name: 'Account', query: { tab: 'photos' } });
         },
         goToMyGalleries() {
-            this.$router.push({ name: 'MyGallery' });
+            this.$router.push({ name: 'Account', query: { tab: 'galleries' } });
         },
         showFollowersPopup() {
             console.log('Opening Followers Popup', this.followersData);
@@ -482,11 +676,10 @@ export default {
                         duration: 3,
                     });
                 }
-                // Làm mới danh sách sau khi thay đổi
                 const profileUsername = this.$route.params.username;
                 await followStore.fetchUserFollowersList(profileUsername);
                 await followStore.fetchUserFollowingList(profileUsername);
-                await followStore.fetchFollowingList(); // Cập nhật danh sách người mà bạn đang theo dõi
+                await followStore.fetchFollowingList();
             } catch (error) {
                 console.error('Error toggling follow for user:', error);
                 notification.error({
@@ -500,367 +693,3 @@ export default {
     }
 };
 </script>
-
-<style scoped>
-.dropdown-content {
-    position: absolute;
-    right: 75px;
-    top: 83%;
-    margin-top: 10px;
-    z-index: 1001;
-    background-color: white;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.dropdown-content ul {
-    list-style: none;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    margin: 0;
-}
-
-.dropdown-content li {
-    padding: 15px 15px 15px 25px;
-    display: flex;
-    align-items: center;
-    color: #222222;
-    white-space: nowrap;
-    z-index: 1000;
-}
-
-.dropdown-content li:hover {
-    color: whitesmoke;
-    background-color: #1890ff;
-}
-
-.dropdown-content li i {
-    margin-right: 8px;
-}
-
-.dropdown-content li:hover i {
-    color: whitesmoke;
-    background-color: #1890ff;
-}
-
-.unblock-button {
-    display: inline-flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 16px;
-    line-height: 20px;
-    font-weight: bold;
-    margin: 0px;
-    border-radius: 28px;
-    cursor: pointer;
-    text-align: center;
-    border: 2px solid red;
-    color: red;
-    background-color: white;
-    width: auto;
-    min-width: 110px;
-    max-height: 32px;
-    padding: 4px 14px;
-}
-
-.unblock-button:hover {
-    background-color: rgb(230, 230, 230);
-}
-
-.site-section {
-    color: #333;
-    display: flex;
-    flex-direction: column;
-    padding: 5px;
-}
-
-.screen-right-icons {
-    position: absolute;
-    top: 80%;
-    right: 80px;
-    transform: translateY(-50%);
-    display: flex;
-    gap: 20px;
-}
-
-.screen-right-icons i {
-    font-size: 20px;
-    cursor: pointer;
-    transition: color 0.3s;
-}
-
-.screen-right-icons i:hover {
-    color: #0870D1;
-}
-
-.cover-photo {
-    margin-top: 65px;
-    word-break: break-word;
-    max-width: 100%;
-    z-index: 1;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    width: 100%;
-    height: 400px;
-    margin-bottom: 40px;
-}
-
-.cover-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.profile-info {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    margin-top: -50px;
-    padding: 0 20px;
-}
-
-.profile-avatar {
-    position: relative;
-    flex-shrink: 0;
-    margin-bottom: 20px;
-    margin-top: 30px;
-    text-align: center;
-}
-
-.avatar-img {
-    width: 120px;
-    height: 120px;
-    border-radius: 50%;
-    border: 4px solid white;
-    object-fit: cover;
-}
-
-.profile-details {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-}
-
-.profile-name {
-    font-size: 24px;
-    font-weight: bold;
-    margin: 0;
-}
-
-.profile-location {
-    color: gray;
-    margin: 5px 0;
-}
-
-.profile-location i {
-    margin-right: 2px;
-    color: black;
-    font-size: 16px;
-}
-
-.profile-bio {
-    margin: 10px 0;
-}
-
-.read-more {
-    color: blue;
-    text-decoration: underline;
-    cursor: pointer;
-}
-
-.profile-stats {
-    display: flex;
-    gap: 10px;
-    margin: 10px 0;
-    justify-content: center;
-    flex-wrap: wrap;
-}
-
-.profile-stats span {
-    font-size: 14px;
-    color: black;
-    font-weight: bold;
-    cursor: pointer;
-}
-
-.profile-stats span:hover {
-    color: #007bff;
-}
-
-.profile-stats span strong {
-    color: gray;
-}
-
-.follow-button {
-    display: inline-flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 16px;
-    line-height: 20px;
-    font-weight: bold;
-    margin: 0px;
-    border-width: 2px;
-    border-radius: 28px;
-    border-style: solid;
-    cursor: pointer;
-    text-align: center;
-    background-color: rgb(8, 112, 209);
-    border-color: rgb(8, 112, 209);
-    color: rgb(255, 255, 255);
-    width: auto;
-    min-width: 110px;
-    max-height: 32px;
-    padding: 4px 14px;
-}
-
-.follow-button:hover {
-    background-color: #0056b3;
-}
-
-.tabs {
-    display: flex;
-    gap: 20px;
-    padding: 10px 20px;
-    border-bottom: 1px solid #ccc;
-    margin-bottom: 20px;
-    justify-content: center;
-}
-
-.tab {
-    text-decoration: none;
-    color: gray;
-    font-size: 16px;
-    position: relative;
-}
-
-.tab.active {
-    color: #0870D1;
-    font-weight: bold;
-}
-
-.tab.active::after {
-    content: "";
-    position: absolute;
-    bottom: -5px;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background-color: #0870D1;
-}
-
-/* Style cho popup */
-.popup-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    z-index: 1000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-.popup-content {
-    background-color: white;
-    border-radius: 12px; /* Tăng độ cong */
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); /* Bóng lớn hơn */
-    width: 500px; /* Mở rộng độ rộng */
-    max-height: 90vh; /* Tăng chiều cao tối đa */
-    overflow-y: auto;
-    position: relative;
-}
-
-.popup-header {
-    padding: 15px 20px; /* Tăng padding */
-    border-bottom: 2px solid #eee; /* Dày hơn */
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.popup-header h3 {
-    margin: 0;
-    font-size: 20px; /* Tăng kích thước chữ */
-    color: #333;
-    font-weight: bold;
-}
-
-.popup-close {
-    background: none;
-    border: none;
-    font-size: 34px; /* Tăng kích thước nút đóng */
-    cursor: pointer;
-    color: #666;
-    padding: 0;
-    line-height: 1;
-    width: 24px;
-    height: 24px;
-}
-
-.popup-list {
-    padding: 15px; /* Tăng padding */
-}
-
-.popup-item {
-    display: flex;
-    align-items: center;
-    padding: 15px 0; /* Tăng padding */
-    border-bottom: 2px solid #eee; /* Dày hơn */
-}
-
-.popup-avatar {
-    width: 40px; /* Tăng kích thước avatar */
-    height: 40px;
-    border-radius: 50%;
-    object-fit: cover;
-    margin-right: 15px; /* Tăng khoảng cách */
-}
-
-.popup-user-info {
-    flex-grow: 1;
-}
-
-.popup-username {
-    font-size: 16px; /* Tăng kích thước chữ */
-    color: #333;
-    display: block;
-    font-weight: bold;
-}
-
-.popup-followers {
-    font-size: 14px; /* Tăng kích thước chữ */
-    color: #666;
-    display: block;
-}
-
-.popup-follow-button {
-    background-color: #007bff;
-    border: none;
-    border-radius: 24px; /* Tăng độ cong */
-    color: white;
-    padding: 8px 16px; /* Tăng padding */
-    font-size: 14px; /* Tăng kích thước chữ */
-    cursor: pointer;
-    margin-left: 15px; /* Tăng khoảng cách */
-}
-
-.popup-follow-button:hover {
-    background-color: #0056b3;
-}
-
-.popup-no-data {
-    padding: 30px; /* Tăng padding */
-    text-align: center;
-    color: #666;
-    font-size: 16px; /* Tăng kích thước chữ */
-}
-</style>

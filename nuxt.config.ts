@@ -6,11 +6,6 @@ import tailwindcss from '@tailwindcss/vite'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 export default defineNuxtConfig({
-  // Root-level app (app.vue, pages/, …) instead of Nuxt 4 default `app/` subfolder
-  dir: {
-    app: '.'
-  },
-
   modules: [
     '@nuxt/eslint',
     '@pinia/nuxt',
@@ -20,45 +15,35 @@ export default defineNuxtConfig({
   /** Bật SSR cho SEO; khu vực chỉ-client (auth + dashboard) tắt SSR qua routeRules */
   ssr: true,
 
-  routeRules: {
-    '/login': { ssr: false },
-    '/register': { ssr: false },
-    '/myPhotos': { ssr: false },
-    '/myGallery': { ssr: false },
-    '/addGallery': { ssr: false },
-    '/addPhotos': { ssr: false },
-    '/editGallery/**': { ssr: false },
-    '/changePassword': { ssr: false },
-    '/like': { ssr: false },
-    '/listUserBlock': { ssr: false },
-    '/galleryDetails/**': { ssr: false }
-  },
+  components: [
+    { path: '~/features/auth/components', pathPrefix: false },
+    { path: '~/features/home/components', pathPrefix: false },
+    { path: '~/features/category/components', pathPrefix: false },
+    {
+      path: '~/features/account/components',
+      pathPrefix: false,
+      ignore: ['**/photos/**', '**/galleries/**', '**/profile/**', '**/likes/**']
+    },
+    { path: '~/features/account/components/photos', pathPrefix: false },
+    { path: '~/features/account/components/galleries', pathPrefix: false },
+    { path: '~/features/account/components/profile', pathPrefix: false },
+    { path: '~/features/account/components/likes', pathPrefix: false },
+    { path: '~/features/photo/components', pathPrefix: false },
+    { path: '~/features/gallery/components', pathPrefix: false },
+    { path: '~/features/blog/components', pathPrefix: false },
+    { path: '~/features/contact/components', pathPrefix: false },
+    { path: '~/features/search/components', pathPrefix: false },
+    { path: '~/features/chat/components', pathPrefix: false },
+    { path: '~/features/profile/components', pathPrefix: false },
+    { path: '~/features/booking/components', pathPrefix: false },
+    { path: '~/features/hotel/components', pathPrefix: false }
+  ],
 
   devtools: {
     enabled: true
   },
 
   css: ['~/assets/css/main.css'],
-
-  alias: {
-    '@assets': resolve(__dirname, 'public/front_assets'),
-    '@features': resolve(__dirname, 'features')
-  },
-
-  components: [
-    { path: '~/features/auth/components', pathPrefix: false },
-    { path: '~/features/home/components', pathPrefix: false },
-    { path: '~/features/account/components', pathPrefix: false },
-    { path: '~/features/photo/components', pathPrefix: false },
-    { path: '~/features/gallery/components', pathPrefix: false },
-    { path: '~/features/blog/components', pathPrefix: false },
-    { path: '~/features/contact/components', pathPrefix: false },
-    { path: '~/features/search/components', pathPrefix: false },
-    { path: '~/features/shared/components', pathPrefix: false },
-    { path: '~/features/profile/components', pathPrefix: false },
-    { path: '~/features/booking/components', pathPrefix: false },
-    { path: '~/features/hotel/components', pathPrefix: false }
-  ],
 
   runtimeConfig: {
     public: {
@@ -69,6 +54,30 @@ export default defineNuxtConfig({
         || 'Discover photography, galleries, and photographers.',
       siteUrl: process.env.NUXT_PUBLIC_SITE_URL || ''
     }
+  },
+
+  // Root-level app (app.vue, pages/, …) instead of Nuxt 4 default `app/` subfolder
+  dir: {
+    app: '.'
+  },
+
+  alias: {
+    '@assets': resolve(__dirname, 'public/front_assets'),
+    '@features': resolve(__dirname, 'features')
+  },
+
+  routeRules: {
+    '/login': { ssr: false },
+    '/register': { ssr: false },
+    '/account': { ssr: false },
+    '/account/**': { ssr: false },
+    '/myPhotos': { ssr: false },
+    '/myGallery': { ssr: false },
+    '/addPhotos': { ssr: false },
+    '/changePassword': { ssr: false },
+    '/like': { ssr: false },
+    '/listUserBlock': { ssr: false },
+    '/galleryDetails/**': { ssr: false }
   },
 
   compatibilityDate: '2025-01-15',
