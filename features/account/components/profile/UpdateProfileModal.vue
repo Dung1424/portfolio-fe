@@ -199,22 +199,34 @@ export default {
             } catch (error) {
                 if (error.response && error.response.status === 422) {
                     const errors = error.response.data.errors;
-                    if (errors.username) {
+                    if (Array.isArray(errors)) {
                         notification.error({
-                            message: 'Username Error',
-                            description: errors.username[0],
+                            message: 'Validation',
+                            description: errors.join(', '),
                         });
-                    }
-                    if (errors.email) {
+                    } else if (errors && typeof errors === 'object') {
+                        if (errors.username) {
+                            notification.error({
+                                message: 'Username Error',
+                                description: errors.username[0],
+                            });
+                        }
+                        if (errors.email) {
+                            notification.error({
+                                message: 'Email Error',
+                                description: errors.email[0],
+                            });
+                        }
+                    } else {
                         notification.error({
-                            message: 'Email Error',
-                            description: errors.email[0],
+                            message: 'Error',
+                            description: error.apiMessage || error.response?.data?.message || 'Validation failed.',
                         });
                     }
                 } else {
                     notification.error({
                         message: 'Error',
-                        description: 'Failed to update profile!',
+                        description: error.apiMessage || error.response?.data?.message || 'Failed to update profile!',
                     });
                 }
             }

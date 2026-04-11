@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { installApiEnvelopeInterceptors } from '~/services/apiEnvelope.js'
 
 export default defineNuxtPlugin(() => {
   axios.interceptors.request.use((config) => {
@@ -8,4 +9,5 @@ export default defineNuxtPlugin(() => {
     }
     return config
   })
+  installApiEnvelopeInterceptors(axios)
 })

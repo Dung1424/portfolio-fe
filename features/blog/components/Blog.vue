@@ -97,8 +97,10 @@ export default {
         async fetchLatestBlogs() {
             try {
                 const response = await blogService.fetchLatest();
-                if (response.data.status === 'success' && response.data.blogs.length > 0) {
-                    this.latestBlogs = response.data.blogs;
+                const d = response.data;
+                const blogs = d.blogs ?? (Array.isArray(d) ? d : []);
+                if (blogs.length > 0) {
+                    this.latestBlogs = blogs;
                 } else {
                     throw new Error('No latest blogs found');
                 }
@@ -113,11 +115,9 @@ export default {
         async fetchOlderBlogs() {
             try {
                 const response = await blogService.fetchOlder();
-                if (response.data.status === 'success') {
-                    this.olderBlogs = response.data.blogs;
-                } else {
-                    throw new Error('No older blogs found');
-                }
+                const d = response.data;
+                const blogs = d.blogs ?? (Array.isArray(d) ? d : []);
+                this.olderBlogs = blogs;
             } catch (error) {
                 console.error('Error fetching older blogs:', error);
                 notification.error({

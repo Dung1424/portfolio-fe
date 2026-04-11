@@ -285,7 +285,8 @@ export default {
                 }
 
                 const response = await homeService.fetchFollowFeed({ headers });
-                this.followingUsers = response.data.data || [];
+                const fd = response.data;
+                this.followingUsers = Array.isArray(fd) ? fd : (fd?.data ?? []);
             } catch (error) {
                 console.error("Lỗi khi lấy danh sách follow:", error);
             }

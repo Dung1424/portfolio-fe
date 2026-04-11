@@ -3,7 +3,7 @@ import getUrlList from '~/services/getUrlList.js'
 
 export const commentService = {
   fetchByPhotoToken(token, params, config = {}) {
-    return axios.get(`${getUrlList().getCommentsByPhotoToken}/${token}`, {
+    return axios.get(getUrlList().getCommentsByPhotoToken(token), {
       params,
       ...config
     })

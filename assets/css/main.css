@@ -82,4 +82,243 @@
   --color-green-800: #016538;
   --color-green-900: #0A5331;
   --color-green-950: #052E16;
+
+  /* Admin — khớp nav site (#1877f2) */
+  --color-admin-accent: #1877f2;
+  --color-admin-accent-hover: #166fe5;
+}
+
+/*
+ * Admin panel: Ant Design Vue — chỉ override bằng Tailwind @apply trong @layer components.
+ * Template dùng utility (text-admin-accent, font-[family-name:Raleway], …).
+ */
+@layer components {
+  .admin-shell {
+    @apply font-sans text-portfolio-ink antialiased;
+  }
+
+  .admin-shell-main-bg {
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgb(24 119 242 / 0.08), transparent),
+      linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 100%);
+  }
+
+  .admin-shell .ant-card {
+    @apply rounded-2xl border border-slate-200/90 bg-white/90 shadow-[0_1px_3px_rgb(15_23_42/0.06),0_8px_24px_-8px_rgb(15_23_42/0.08)];
+    backdrop-filter: blur(8px);
+  }
+
+  .admin-shell .ant-card-head {
+    @apply min-h-[52px] border-b border-slate-100/90 px-6 py-4 font-semibold text-portfolio-ink;
+    font-family: var(--font-portfolio-heading), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  .admin-shell .ant-card-body {
+    @apply px-6 py-5;
+  }
+
+  .admin-shell .ant-table-wrapper .ant-table {
+    @apply rounded-xl;
+  }
+
+  .admin-shell .ant-table-tbody > tr > td {
+    @apply border-slate-100;
+  }
+
+  .admin-shell .ant-table-tbody > tr:hover > td {
+    @apply bg-slate-50/80;
+  }
+
+  /* Nút icon trên bảng */
+  .admin-shell .admin-table-icon-btn.ant-btn {
+    @apply flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-slate-100/80 text-slate-600 transition-colors;
+  }
+
+  .admin-shell .admin-table-icon-btn.ant-btn:hover {
+    @apply bg-admin-accent/10 text-admin-accent;
+  }
+
+  .admin-shell .admin-table-icon-btn.ant-btn-dangerous,
+  .admin-shell .admin-table-icon-btn.ant-btn.ant-btn-dangerous {
+    @apply bg-red-50 text-red-600;
+  }
+
+  .admin-shell .admin-table-icon-btn.ant-btn-dangerous:hover {
+    @apply bg-red-100 text-red-700;
+  }
+
+  .admin-shell .admin-toolbar {
+    @apply mb-5 flex flex-wrap items-center gap-3;
+  }
+
+  .admin-shell .admin-table-link-icon {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100/80 text-slate-600 transition-colors;
+  }
+
+  .admin-shell .admin-table-link-icon:hover {
+    @apply bg-admin-accent/10 text-admin-accent;
+  }
+
+  .admin-shell .ant-btn-primary {
+    @apply !border-admin-accent !bg-admin-accent shadow-[0_1px_2px_rgb(24_119_242/0.25)];
+  }
+
+  .admin-shell .ant-btn-primary:hover {
+    @apply !border-admin-accent-hover !bg-admin-accent-hover;
+  }
+
+  .admin-shell .ant-btn-default:hover {
+    @apply border-admin-accent text-admin-accent;
+  }
+
+  .admin-shell .ant-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+    @apply font-semibold text-admin-accent;
+  }
+
+  .admin-shell .ant-tabs .ant-tabs-ink-bar {
+    @apply bg-admin-accent;
+  }
+
+  .admin-shell .ant-table-thead > tr > th {
+    @apply !bg-slate-50 font-semibold text-portfolio-ink;
+  }
+
+  .admin-shell .ant-pagination .ant-pagination-item-active {
+    @apply border-admin-accent;
+  }
+
+  .admin-shell .ant-pagination .ant-pagination-item-active a {
+    @apply text-admin-accent;
+  }
+
+  .admin-shell .ant-input:hover,
+  .admin-shell .ant-input-password:hover,
+  .admin-shell .ant-input-affix-wrapper:hover {
+    @apply border-admin-accent/45;
+  }
+
+  .admin-shell .ant-input:focus,
+  .admin-shell .ant-input-focused,
+  .admin-shell .ant-input-affix-wrapper-focused {
+    @apply border-admin-accent shadow-[0_0_0_2px_rgb(24_119_242/0.12)];
+  }
+
+  .admin-shell .ant-select:not(.ant-select-disabled):hover .ant-select-selector {
+    @apply border-admin-accent/45;
+  }
+
+  .admin-shell .ant-select-focused .ant-select-selector {
+    @apply !border-admin-accent shadow-[0_0_0_2px_rgb(24_119_242/0.12)];
+  }
+
+  .admin-shell .ant-picker:hover,
+  .admin-shell .ant-picker-focused {
+    @apply border-admin-accent;
+  }
+
+  .admin-shell .ant-form-item-label > label {
+    @apply font-medium text-slate-600;
+  }
+
+  .admin-shell .ant-btn-dangerous,
+  .admin-shell .ant-btn-danger {
+    @apply rounded-[10px];
+  }
+
+  .admin-shell .ant-card-small > .ant-card-body {
+    @apply px-4 py-3;
+  }
+
+  .admin-shell aside nav a.router-link-active .admin-sidebar-icon {
+    @apply bg-admin-accent/35 text-white;
+  }
+
+  /* Trang login admin (không dùng layout admin-shell) */
+  .admin-login .ant-btn-primary {
+    @apply !h-11 !rounded-[10px] !border-admin-accent !bg-admin-accent !font-semibold;
+  }
+
+  .admin-login .ant-btn-primary:hover {
+    @apply !border-admin-accent-hover !bg-admin-accent-hover;
+  }
+
+  .admin-login .ant-input,
+  .admin-login .ant-input-password {
+    @apply rounded-[10px];
+  }
+
+  .admin-login .ant-input:focus,
+  .admin-login .ant-input-affix-wrapper-focused {
+    @apply border-admin-accent shadow-[0_0_0_2px_rgb(24_119_242/0.12)];
+  }
+
+  .admin-shell .ant-btn-lg,
+  .admin-shell .ant-input,
+  .admin-shell .ant-input-affix-wrapper,
+  .admin-shell .ant-select .ant-select-selector,
+  .admin-shell .ant-picker,
+  .admin-shell .ant-input-textarea-affix-wrapper textarea {
+    @apply rounded-lg;
+  }
+
+  .admin-shell .ant-divider {
+    @apply border-slate-100;
+  }
+
+  .admin-file-input {
+    @apply block w-full cursor-pointer rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-sm text-slate-500 transition-colors;
+  }
+
+  .admin-file-input:hover {
+    @apply border-admin-accent/40 bg-admin-accent/5 text-slate-700;
+  }
+}
+
+/* Panel ảnh trong modal / trang photo admin */
+.photo-edit-toolbar .ant-btn {
+  border-radius: 0.5rem;
+  font-weight: 500;
+}
+
+.photo-edit-meta dt {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgb(148 163 184);
+}
+
+.photo-edit-meta dd {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--color-portfolio-ink);
+}
+
+/*
+ * Ant Design Vue: notification / message mặc định z-index thấp hơn modal Tailwind admin
+ * (AdminModal ~2050). Nâng lên để thông báo luôn hiện trên modal khi edit.
+ */
+.ant-notification,
+.ant-notification-top,
+.ant-notification-bottom,
+.ant-notification-topLeft,
+.ant-notification-topRight,
+.ant-notification-bottomLeft,
+.ant-notification-bottomRight {
+  z-index: 5000 !important;
+}
+
+.ant-message {
+  z-index: 5000 !important;
+}
+
+/*
+ * AdminModal dùng z-[2050]; dropdown Ant mặc định thấp hơn → menu Select/DatePicker
+ * bị kẹt phía sau overlay, nhìn như không có option.
+ */
+.ant-select-dropdown,
+.ant-picker-dropdown,
+.ant-cascader-dropdown {
+  z-index: 3060 !important;
 }

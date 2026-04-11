@@ -211,7 +211,8 @@ export default {
         async fetchBlogDetails(slug) {
             try {
                 const response = await blogService.fetchBySlug(slug);
-                this.blogDetails = response.data.blog;
+                const d = response.data;
+                this.blogDetails = d.blog ?? d;
             } catch (error) {
                 console.error("Lỗi khi lấy dữ liệu blog:", error);
             }

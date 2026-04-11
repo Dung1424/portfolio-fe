@@ -434,7 +434,8 @@ export default {
                 const response = await photoService.fetchDetail(token, {
                     headers: headers
                 });
-                this.photoDetail = response.data.data;
+                const d = response.data;
+                this.photoDetail = d?.data ?? d;
                 this.updateLikedState();
             } catch (error) {
                 console.error("Error fetching photo details:", error);
@@ -452,18 +453,19 @@ export default {
                     },
                 });
 
-                if (response.data.success) {
-                    const { total_likes, liked_users, current_page, last_page, total } = response.data.data;
+                const d = response.data;
+                if (d && (d.total_likes !== undefined || Array.isArray(d.liked_users))) {
+                    const { total_likes, liked_users, current_page, last_page, total } = d;
                     this.photoLikesCount = total_likes;
                     this.likedUsers = page === 1 ? liked_users : [...this.likedUsers, ...liked_users];
                     this.likesCurrentPage = current_page;
                     this.likesLastPage = last_page;
                     this.totalLikes = total;
                 } else {
-                    console.error(response.data.message);
+                    console.error(response.apiMessage || d?.message);
                     notification.error({
                         message: 'Error',
-                        description: response.data.message || 'Failed to fetch likes.',
+                        description: response.apiMessage || d?.message || 'Failed to fetch likes.',
                         placement: 'topRight',
                         duration: 3,
                     });
@@ -513,8 +515,9 @@ export default {
 
                 const response = await photoService.fetchRelatedPhotos(token, { headers });
 
-                if (response.data) {
-                    this.similarPhotos = response.data;
+                const d = response.data;
+                if (d) {
+                    this.similarPhotos = Array.isArray(d) ? d : (d?.data ?? []);
                     this.updateLikedState();
                 }
             } catch (error) {
@@ -532,14 +535,10 @@ export default {
 
                 const response = await photoService.fetchRelatedGalleries(token, { headers });
 
-                if (response.data && Array.isArray(response.data)) {
-                    this.relatedGalleries = response.data;
-                    this.updateLikedGalleriesState(); // Cập nhật trạng thái liked sau khi gán dữ liệu
-                    console.log('Related Galleries:', this.relatedGalleries); // Debug
-                } else {
-                    this.relatedGalleries = [];
-                    console.error("No related galleries found or invalid data:", response.data?.message);
-                }
+                const d = response.data;
+                const list = Array.isArray(d) ? d : (d?.data ?? []);
+                this.relatedGalleries = list;
+                this.updateLikedGalleriesState();
             } catch (error) {
                 console.error("Error fetching related galleries:", error);
                 this.relatedGalleries = [];
@@ -824,7 +823,8 @@ export default {
         async fetchCategories() {
             try {
                 const response = await photoService.fetchCategories();
-                this.categories = response.data;
+                const d = response.data;
+                this.categories = Array.isArray(d) ? d : (d?.data ?? []);
             } catch (error) {
                 console.error("Error fetching categories:", error);
             }

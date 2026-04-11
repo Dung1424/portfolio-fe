@@ -22,9 +22,8 @@ export const useUserStore = defineStore('user', {
             Authorization: `Bearer ${localStorage.getItem('token')}`
           }
         })
-        if (response.data.user) {
-          this.user = response.data.user
-        }
+        const d = response.data
+        this.user = d.user ?? d
       } catch (error) {
         console.error('Error fetching user data:', error)
       }
@@ -52,7 +51,8 @@ export const useUserStore = defineStore('user', {
           }
         })
 
-        this.user = response.data.user
+        const d = response.data
+        this.user = d.user ?? d
         localStorage.setItem('successMessage', 'Profile updated successfully!')
       } catch (error) {
         console.error('Failed to update profile:', error.response?.data || error)

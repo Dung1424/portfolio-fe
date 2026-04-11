@@ -453,7 +453,8 @@ export default {
             const username = this.$route.params.username;
             try {
                 const response = await profileService.fetchByUsername(username);
-                this.user = response.data;
+                const d = response.data;
+                this.user = d.user ?? d;
             } catch (error) {
                 console.error('Error fetching user data:', error);
             }
@@ -462,11 +463,8 @@ export default {
             const username = this.$route.params.username;
             try {
                 const response = await profileService.fetchTotalLikes(username);
-                if (response.data.success) {
-                    this.photoLikesCount = response.data.data.total_likes;
-                } else {
-                    this.photoLikesCount = 0;
-                }
+                const d = response.data;
+                this.photoLikesCount = d.total_likes ?? d.data?.total_likes ?? 0;
             } catch (error) {
                 console.error('Error fetching total likes:', error);
                 this.photoLikesCount = 0;
@@ -576,7 +574,8 @@ export default {
             const username = this.$route.params.username;
             try {
                 const response = await profileService.fetchPhotos(username);
-                this.photos = response.data;
+                const d = response.data;
+                this.photos = Array.isArray(d) ? d : (d?.data ?? []);
             } catch (error) {
                 console.error('Error fetching photos:', error);
             }
@@ -592,7 +591,8 @@ export default {
                     }
                 }
                 const response = await profileService.fetchGalleries(username, { headers });
-                this.galleries = response.data;
+                const d = response.data;
+                this.galleries = Array.isArray(d) ? d : (d?.data ?? []);
             } catch (error) {
                 console.error('Error fetching galleries:', error);
             }

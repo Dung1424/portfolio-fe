@@ -24,9 +24,10 @@ export const useGalleryStore = defineStore('gallery', {
             Authorization: `Bearer ${token}`
           }
         })
-        this.galleries = response.data.data
+        const d = response.data
+        this.galleries = Array.isArray(d) ? d : (d?.data ?? [])
       } catch (error) {
-        this.error = error.response ? error.response.data.message : error.message
+        this.error = error.apiMessage || (error.response ? error.response.data?.message : null) || error.message
       } finally {
         this.loading = false
       }
@@ -49,7 +50,8 @@ export const useGalleryStore = defineStore('gallery', {
         })
 
         // Cập nhật gallery với ảnh mới
-        const updatedGallery = response.data.gallery
+        const d = response.data
+        const updatedGallery = d.gallery ?? d
         const index = this.galleries.findIndex(g => g.id === updatedGallery.id)
         if (index !== -1) {
           this.galleries[index] = updatedGallery
@@ -60,10 +62,10 @@ export const useGalleryStore = defineStore('gallery', {
         // Hiển thị thông báo thành công
         notification.success({
           message: 'Success',
-          description: response.data.message
+          description: response.apiMessage || d?.message || ''
         })
       } catch (error) {
-        this.error = error.response ? error.response.data.message : error.message
+        this.error = error.apiMessage || (error.response ? error.response.data?.message : null) || error.message
       } finally {
         this.loading = false
       }

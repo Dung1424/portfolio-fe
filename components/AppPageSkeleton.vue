@@ -1,4 +1,5 @@
 <script setup lang="ts">
+/** Opt-in: mount chỉ trong layout/page cần overlay; điều khiển bằng `useAppPageSkeleton()`. */
 const visible = useAppPageSkeleton()
 
 watch(

@@ -226,11 +226,16 @@ export default {
                 this.$emit('success');
                 this.$emit('update:open', false);
             } catch (error) {
-                if (error.response?.data?.errors) {
-                    this.errorMessage = Object.values(error.response.data.errors).flat().join(', ');
+                const raw = error.response?.data?.errors ?? error.apiErrors;
+                const flat = Array.isArray(raw)
+                    ? raw.filter(e => typeof e === 'string')
+                    : Object.values(raw || {}).flat().filter(e => typeof e === 'string');
+                if (flat.length) {
+                    this.errorMessage = flat.join(', ');
                 } else {
                     this.errorMessage =
-                        error.response?.data?.message
+                        error.apiMessage
+                        || error.response?.data?.message
                         || (this.mode === 'create' ? 'Could not create gallery.' : 'Could not update gallery.');
                 }
             } finally {

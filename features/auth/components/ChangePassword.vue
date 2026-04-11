@@ -156,7 +156,7 @@ export default {
 
                 notification.success({
                     message: 'Success',
-                    description: response.data.message,
+                    description: response.apiMessage || response.data?.message || 'Password updated.',
                     placement: 'topRight',
                     duration: 5,
                 });
@@ -167,10 +167,28 @@ export default {
             } catch (error) {
                 if (error.response && error.response.status === 422) {
                     const errors = error.response.data.errors;
-                    for (const key of Object.keys(errors)) {
+                    if (Array.isArray(errors)) {
+                        errors.forEach((msg) => {
+                            notification.error({
+                                message: 'Error',
+                                description: msg,
+                                placement: 'topRight',
+                                duration: 5,
+                            });
+                        });
+                    } else if (errors && typeof errors === 'object') {
+                        for (const key of Object.keys(errors)) {
+                            notification.error({
+                                message: 'Error',
+                                description: errors[key].join(', '),
+                                placement: 'topRight',
+                                duration: 5,
+                            });
+                        }
+                    } else {
                         notification.error({
                             message: 'Error',
-                            description: errors[key].join(', '),
+                            description: error.apiMessage || error.response?.data?.message || 'Validation failed.',
                             placement: 'topRight',
                             duration: 5,
                         });
@@ -178,7 +196,7 @@ export default {
                 } else {
                     notification.error({
                         message: 'Error',
-                        description: error.response ? error.response.data.message : 'An unexpected error occurred.',
+                        description: error.apiMessage || (error.response ? error.response.data?.message : null) || 'An unexpected error occurred.',
                         placement: 'topRight',
                         duration: 5,
                     });

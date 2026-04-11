@@ -16,9 +16,11 @@ export const useLikeStore = defineStore('likeStore', {
           }
         })
         const body = response.data
-        const list = Array.isArray(body?.data)
-          ? body.data
-          : (body?.data?.data && Array.isArray(body.data.data) ? body.data.data : [])
+        const list = Array.isArray(body)
+          ? body
+          : (Array.isArray(body?.data)
+              ? body.data
+              : (body?.data?.data && Array.isArray(body.data.data) ? body.data.data : []))
         this.likedPhotos = list.map(like => like.photo_id).filter(Boolean)
       } catch (error) {
         console.error('Failed to fetch liked photos:', error.response?.data || error.message)
@@ -33,9 +35,11 @@ export const useLikeStore = defineStore('likeStore', {
           }
         })
         const body = response.data
-        const list = Array.isArray(body?.data)
-          ? body.data
-          : (body?.data?.data && Array.isArray(body.data.data) ? body.data.data : [])
+        const list = Array.isArray(body)
+          ? body
+          : (Array.isArray(body?.data)
+              ? body.data
+              : (body?.data?.data && Array.isArray(body.data.data) ? body.data.data : []))
         this.likedGalleries = list.map(like => like.gallery_id).filter(Boolean)
       } catch (error) {
         console.error('Failed to fetch liked galleries:', error.response?.data || error.message)

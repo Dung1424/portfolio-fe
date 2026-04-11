@@ -22,10 +22,6 @@ useHead({
 </script>
 
 <template>
-  <!-- Chỉ client: tránh useState skeleton bị hydrate từ SSR (false) → ghi đè plugin -->
-  <ClientOnly>
-    <AppPageSkeleton />
-  </ClientOnly>
   <NuxtLayout>
     <NuxtPage />
   </NuxtLayout>
