@@ -67,7 +67,9 @@
                             <input type="checkbox" class="h-4 w-4 rounded border-neutral-300 text-blue-600 accent-blue-600" />
                             Remember me
                         </label>
-                        <a href="#" class="shrink-0 text-blue-600 hover:underline">Forgot password?</a>
+                        <NuxtLink to="/forgot-password" class="shrink-0 text-blue-600 hover:underline"
+                            >Forgot password?</NuxtLink
+                        >
                     </div>
 
                     <button
@@ -88,6 +90,7 @@
 </template>
 <script>
 import { authService } from '~/features/auth/services/auth.api.js'
+import { getErrorMessage } from '~/services/apiEnvelope.js'
 import { notification } from 'ant-design-vue'
 
 export default {
@@ -126,7 +129,7 @@ export default {
                 window.location.href = response.data.route;
             } catch (error) {
                 console.error(error);
-                this.errorMessage = error.response?.data?.error || 'Login failed, please try again.';
+                this.errorMessage = getErrorMessage(error, 'Login failed, please try again.');
             }
         }
     }

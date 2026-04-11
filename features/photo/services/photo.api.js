@@ -3,7 +3,7 @@ import getUrlList from '~/services/getUrlList.js'
 
 export const photoService = {
   fetchDetail(token, config = {}) {
-    return axios.get(`${getUrlList().getPhotoDetail}/${token}`, config)
+    return axios.get(getUrlList().getPhotoDetail(token), config)
   },
   fetchPhotoLikes(token, config = {}) {
     return axios.get(getUrlList().getPhotoLikes(token), config)

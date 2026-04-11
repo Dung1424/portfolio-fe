@@ -3,7 +3,7 @@
  *
  * **Phân biệt hai kiểu “đang tải”:**
  *
- * 1. **Lần đầu / chưa có dữ liệu** — dùng lưới khung + shimmer (`FeedSkeletonGrid`, `SkeletonBox`, hoặc overlay `AppPageSkeleton` khi chuyển route). Có thể đặt **chỉ một section** (không bắt buộc cả trang).
+ * 1. **Lần đầu / chưa có dữ liệu** — dùng lưới khung + shimmer (`FeedSkeletonGrid`, `SkeletonBox`, hoặc overlay `AppPageSkeleton` nếu bạn mount nó cục bộ). Có thể đặt **chỉ một section** (không bắt buộc cả trang).
  *
  * 2. **Tải thêm** (pagination, infinite scroll) — dùng **spinner / indicator nhỏ** (`FeedLoadMoreIndicator`), **không** dùng full grid shimmer để tránh nhầm với “đang load trang”.
  *

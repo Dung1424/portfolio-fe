@@ -348,14 +348,16 @@ export default {
                     headers: { Authorization: `Bearer ${token}` },
                 });
 
-                this.recentPhotos = Array.isArray(response.data)
-                    ? response.data.map(photo => ({
+                const d = response.data;
+                const rows = Array.isArray(d) ? d : (d?.data ?? []);
+                this.recentPhotos = Array.isArray(rows)
+                    ? rows.map(photo => ({
                         ...photo,
                         liked: false,
                         following: false,
                         blocked: false,
                     }))
-                    : (console.warn("Dữ liệu từ API không phải là mảng:", response.data), []);
+                    : (console.warn("Dữ liệu từ API không phải là mảng:", d), []);
             } catch (error) {
                 console.error("Lỗi khi lấy danh sách ảnh gần đây từ người theo dõi:", error);
                 this.recentPhotos = [];
@@ -371,12 +373,14 @@ export default {
                     headers: { Authorization: `Bearer ${token}` },
                 });
 
-                this.recentGalleries = Array.isArray(response.data)
-                    ? response.data.map(gallery => ({
+                const d = response.data;
+                const rows = Array.isArray(d) ? d : (d?.data ?? []);
+                this.recentGalleries = Array.isArray(rows)
+                    ? rows.map(gallery => ({
                         ...gallery,
                         liked: false,
                     }))
-                    : (console.warn("Dữ liệu galleries từ API không phải là mảng:", response.data), []);
+                    : (console.warn("Dữ liệu galleries từ API không phải là mảng:", d), []);
             } catch (error) {
                 console.error("Lỗi khi lấy danh sách gallery gần đây từ người theo dõi:", error);
                 this.recentGalleries = [];

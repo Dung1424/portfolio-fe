@@ -9,6 +9,9 @@
                 <h2 class="mb-6 text-center text-xl font-bold tracking-tight text-[#222] sm:text-2xl">Sign Up</h2>
 
                 <form class="space-y-4" @submit.prevent="handleRegister">
+                    <p v-if="generalError" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {{ generalError }}
+                    </p>
                     <div class="space-y-1.5 text-left">
                         <label for="username" class="block text-sm font-medium text-zinc-700">User name</label>
                         <div class="relative">
@@ -123,7 +126,9 @@
                             <input type="checkbox" class="h-4 w-4 rounded border-neutral-300 text-blue-600 accent-blue-600" />
                             Remember me
                         </label>
-                        <a href="#" class="shrink-0 text-blue-600 hover:underline">Forgot password?</a>
+                        <NuxtLink to="/forgot-password" class="shrink-0 text-blue-600 hover:underline"
+                            >Forgot password?</NuxtLink
+                        >
                     </div>
 
                     <button
@@ -144,6 +149,7 @@
 </template>
 <script>
 import { authService } from '~/features/auth/services/auth.api.js'
+import { flattenErrorMessages, getErrorMessage } from '~/services/apiEnvelope.js'
 import { notification } from "ant-design-vue"
 
 export default {
@@ -156,6 +162,7 @@ export default {
             password_confirmation: '',
             showPassword: false,
             showPasswordConfirm: false,
+            generalError: '',
             errors: {
                 username: [],
                 email: [],
@@ -166,6 +173,7 @@ export default {
     },
     methods: {
         async handleRegister() {
+            this.generalError = '';
             try {
                 await authService.register({
                     username: this.username,
@@ -182,10 +190,12 @@ export default {
                 this.$router.push("/login");
             } catch (error) {
                 console.error('Registration failed', error);
-                if (error.response && error.response.data.errors) {
-                    this.errors = error.response.data.errors;
+                const raw = error.response?.data?.errors;
+                if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+                    this.errors = { ...this.errors, ...raw };
                 } else {
-                    alert('Registration failed. Please check your input.');
+                    const msgs = flattenErrorMessages(raw ?? error.apiErrors);
+                    this.generalError = msgs.length ? msgs.join('\n') : getErrorMessage(error, 'Registration failed. Please check your input.');
                 }
             }
         }

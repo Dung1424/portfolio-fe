@@ -16,6 +16,8 @@ export default defineNuxtConfig({
   ssr: true,
 
   components: [
+    /** Bắt buộc: auto-import `~/components` (AdminModal, AdminPager, …) */
+    { path: '~/components', pathPrefix: false },
     { path: '~/features/auth/components', pathPrefix: false },
     { path: '~/features/home/components', pathPrefix: false },
     { path: '~/features/category/components', pathPrefix: false },
@@ -69,6 +71,7 @@ export default defineNuxtConfig({
   routeRules: {
     '/login': { ssr: false },
     '/register': { ssr: false },
+    '/forgot-password': { ssr: false },
     '/account': { ssr: false },
     '/account/**': { ssr: false },
     '/myPhotos': { ssr: false },
@@ -77,7 +80,9 @@ export default defineNuxtConfig({
     '/changePassword': { ssr: false },
     '/like': { ssr: false },
     '/listUserBlock': { ssr: false },
-    '/galleryDetails/**': { ssr: false }
+    '/galleryDetails/**': { ssr: false },
+    '/admin': { ssr: false },
+    '/admin/**': { ssr: false }
   },
 
   compatibilityDate: '2025-01-15',

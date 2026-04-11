@@ -206,13 +206,12 @@ export default {
                     headers = { Authorization: `Bearer ${token}` };
                 }
                 const response = await galleryService.fetchPublicByCode(code, { headers });
-                if (response.data.success) {
-                    this.gallery = response.data.data;
+                const d = response.data;
+                this.gallery = d?.data ?? d;
+                if (this.gallery) {
                     this.updateLikedState();
                     this.updateFollowingState();
                     this.updateBlockedState();
-                } else {
-                    console.error(response.data.message);
                 }
             } catch (error) {
                 console.error("Error fetching gallery details:", error);

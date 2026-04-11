@@ -12,10 +12,10 @@ export const accountService = {
     return axios.post(getUrlList().addGallery, payload, config)
   },
   deleteGallery(galleriesCode, config = {}) {
-    return axios.delete(`${getUrlList().deleteGallery}/${galleriesCode}`, config)
+    return axios.delete(getUrlList().deleteGallery(galleriesCode), config)
   },
   fetchGalleryDetails(galleriesCode, config = {}) {
-    return axios.get(`${getUrlList().getGalleryDetails}/${galleriesCode}`, config)
+    return axios.get(getUrlList().getGalleryDetails(galleriesCode), config)
   },
   deletePhotoFromGallery(galleriesCode, photoId, config = {}) {
     return axios.delete(getUrlList().deletePhotoFromGallery(galleriesCode, photoId), config)
@@ -46,6 +46,6 @@ export const accountService = {
     return axios.delete(getUrlList().deleteLike(likeId), config)
   },
   updateGallery(galleriesCode, payload, config = {}) {
-    return axios.post(`${getUrlList().editGallery}/${galleriesCode}`, payload, config)
+    return axios.post(getUrlList().editGallery(galleriesCode), payload, config)
   }
 }

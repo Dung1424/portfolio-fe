@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
 import getUrlList from '~/services/getUrlList.js'
+import { getErrorMessage } from '~/services/apiEnvelope.js'
 import { notification } from 'ant-design-vue'
 
 export const useReportStore = defineStore('report', {
@@ -26,19 +27,23 @@ export const useReportStore = defineStore('report', {
         })
 
         // Lưu báo cáo vào state nếu cần
-        this.reports.push(response.data.report)
+        const d = response.data
+        const report = d.report ?? d
+        if (report && typeof report === 'object') {
+          this.reports.push(report)
+        }
 
         notification.success({
           message: 'Reported successfully.',
-          description: response.data.message,
+          description: response.apiMessage || d?.message || '',
           placement: 'topRight',
           duration: 3
         })
 
-        return response.data
+        return d
       } catch (error) {
         console.error('Failed to send report:', error)
-        const errorMessage = error.response?.data?.error || 'Unable to send report. Please try again.'
+        const errorMessage = getErrorMessage(error, 'Unable to send report. Please try again.')
         notification.error({
           message: 'Error',
           description: errorMessage,

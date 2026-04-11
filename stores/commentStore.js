@@ -16,7 +16,7 @@ export const useCommentStore = defineStore('commentStore', {
       this.loading = true
 
       try {
-        const response = await axios.get(`${getUrlList().getCommentsByPhotoToken}/${token}`, {
+        const response = await axios.get(getUrlList().getCommentsByPhotoToken(token), {
           params: {
             page,
             per_page: 3
@@ -51,7 +51,8 @@ export const useCommentStore = defineStore('commentStore', {
         // Tải lại bình luận từ trang 1 để cập nhật
         await this.fetchComments(photoToken, 1)
 
-        return response.data.comment
+        const d = response.data
+        return d.comment ?? d
       } catch (error) {
         console.error('Error posting comment:', error)
       }

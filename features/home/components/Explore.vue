@@ -395,7 +395,9 @@ export default {
                 }
                 const response = await homeService.fetchTopLikedPhotos({ headers });
                 console.log('Dữ liệu từ API:', response.data);
-                this.topLikedPhotos = response.data.data.map(photo => ({
+                const d = response.data;
+                const rows = Array.isArray(d) ? d : (d?.data ?? []);
+                this.topLikedPhotos = rows.map(photo => ({
                     ...photo,
                     liked: false, // Khởi tạo trạng thái liked
                     following: false, // Khởi tạo trạng thái following
@@ -411,7 +413,8 @@ export default {
                 const token = localStorage.getItem("token");
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
                 const response = await homeService.fetchTopUsersWithPhotos({ headers });
-                this.topUsers = response.data.top_users.map(user => ({
+                const d = response.data;
+                this.topUsers = (d.top_users ?? []).map(user => ({
                     ...user,
                     following: false
                 })) || [];
@@ -424,7 +427,8 @@ export default {
         async fetchTopCategories() {
             try {
                 const response = await homeService.fetchTopCategories();
-                this.topCategories = response.data || []; // Lấy trực tiếp mảng danh mục
+                const d = response.data;
+                this.topCategories = Array.isArray(d) ? d : (d?.data ?? []);
             } catch (error) {
                 console.error("Lỗi khi lấy danh mục:", error);
             }
@@ -437,7 +441,9 @@ export default {
                     headers = { Authorization: `Bearer ${token}` };
                 }
                 const response = await homeService.fetchTopLikedGalleries({ headers });
-                this.topLikedGalleries = response.data.data.map(gallery => ({
+                const d = response.data;
+                const rows = Array.isArray(d) ? d : (d?.data ?? []);
+                this.topLikedGalleries = rows.map(gallery => ({
                     ...gallery,
                     liked: false // Khởi tạo trạng thái liked
                 })) || [];

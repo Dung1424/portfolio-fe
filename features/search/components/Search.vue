@@ -162,7 +162,8 @@ export default {
                         Authorization: token ? `Bearer ${token}` : '', // Gửi token nếu có
                     }
                 });
-                this.images = response.data;
+                const d = response.data;
+                this.images = Array.isArray(d) ? d : (d?.data ?? []);
                 this.totalResults = this.images.length;
             } catch (error) {
                 console.error('Failed to fetch search results:', error);
