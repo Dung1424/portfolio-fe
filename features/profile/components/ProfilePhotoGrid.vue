@@ -13,7 +13,7 @@
                     class="block h-full w-full"
                 >
                     <img
-                        :src="photo.image_url"
+                        :src="resolveMediaUrl(photo.image_url)"
                         :alt="photo.title"
                         class="h-full w-full object-cover"
                     />
@@ -49,6 +49,10 @@ export default {
     name: 'ProfilePhotoGrid',
     components: {
         AddToGalleryModal,
+    },
+    setup() {
+        const { resolveMediaUrl } = useResolvePublicMediaUrl()
+        return { resolveMediaUrl }
     },
     props: {
         photos: {

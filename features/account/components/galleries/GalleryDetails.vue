@@ -212,7 +212,8 @@ export default {
                         'Authorization': `Bearer ${localStorage.getItem('token')}`
                     }
                 });
-                this.gallery = response.data.data;
+                const d = response.data;
+                this.gallery = d?.data ?? d;
             } catch (error) {
                 console.error('Failed to fetch gallery details:', error);
             }

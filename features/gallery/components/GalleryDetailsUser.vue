@@ -1,11 +1,25 @@
 <template>
-    <!-- Nếu chủ gallery bị chặn, chỉ hiển thị blocked-content -->
-            <div v-if="isGalleryOwnerBlocked" class="flex h-screen flex-col items-center justify-center bg-[#f5f5f5] text-center">
-                <i class="fa-solid fa-circle-xmark mb-5 text-[50px] text-[#ff4d4f]"></i>
-                <h2 class="mb-[10px] text-[28px] text-[#333]">Something went wrong</h2>
-                <p class="text-base text-[#666]">Please refresh the page to try again.</p>
+    <!-- API 404 (gallery/owner không tồn tại, khóa, block…) hoặc chủ gallery nằm trong danh sách chặn (JWT) -->
+            <div
+                v-if="showGalleryUnavailable"
+                class="flex min-h-screen flex-col items-center justify-center bg-[#f7f8fa] px-6 py-16 text-center [font-family:ui-sans-serif,system-ui,sans-serif]"
+            >
+                <div class="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-zinc-200/80 text-zinc-500">
+                    <i class="fa-regular fa-images text-[2.25rem]" aria-hidden="true" />
+                </div>
+                <h1 class="mb-2 text-2xl font-semibold tracking-tight text-zinc-900 sm:text-[1.75rem]">
+                    Gallery not available
+                </h1>
+                <p class="max-w-md text-base leading-relaxed text-zinc-600">
+                    This gallery could not be found. It may have been removed, the owner’s account is unavailable, or the link is incorrect.
+                </p>
+                <NuxtLink
+                    :to="{ name: 'Index' }"
+                    class="mt-8 inline-flex items-center justify-center rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800"
+                >
+                    Back to home
+                </NuxtLink>
             </div>
-            <!-- Nếu không bị chặn, hiển thị nội dung gallery bình thường -->
             <div v-else class="bg-white p-5">
                 <h1 class="mt-[10px] text-center text-2xl text-[#333]">{{ gallery.galleries_name || 'no title' }}</h1>
                 <h1 class="mt-[10px] text-center text-2xl text-[#333]">{{ gallery.galleries_description || 'no description' }}</h1>
@@ -139,6 +153,8 @@ export default {
     data() {
         return {
             gallery: {},
+            /** GET Gallery/DetailByCode trả 404 (gallery không có, chủ không tồn tại / khóa / block…) */
+            galleryUnavailable: false,
             activeDropdown: null,
             showAddToGallery: false,
             selectedPhotoId: null,
@@ -148,36 +164,7 @@ export default {
         };
     },
     async mounted() {
-        const galleries_code = this.$route.params.galleries_code || 'abc123';
-        this.fetchGalleryDetails(galleries_code);
-
-        const userStore = useUserStore();
-        await userStore.fetchUserData();
-
-        const likeStore = useLikeStore();
-        await likeStore.fetchLikedPhotos();
-        await likeStore.fetchLikedGalleries();
-        this.updateLikedState();
-
-        const followStore = useFollowStore();
-        await followStore.fetchFollowingList();
-        this.updateFollowingState();
-
-        const blockStore = useBlockStore();
-        await blockStore.fetchBlockedUsers();
-        this.updateBlockedState();
-
-        const notifData = localStorage.getItem('blockNotification');
-        if (notifData) {
-            const { message, description, duration } = JSON.parse(notifData);
-            notification.success({
-                message,
-                description,
-                placement: 'topRight',
-                duration,
-            });
-            localStorage.removeItem('blockNotification');
-        }
+        await this.loadGalleryPage();
     },
     computed: {
         userStore() {
@@ -193,8 +180,55 @@ export default {
             }
             return false;
         },
+        showGalleryUnavailable() {
+            return this.galleryUnavailable || this.isGalleryOwnerBlocked;
+        },
     },
     methods: {
+        async loadGalleryPage() {
+            const galleries_code = this.$route.params.galleries_code;
+            if (!galleries_code) {
+                this.galleryUnavailable = true;
+                this.gallery = {};
+                return;
+            }
+            this.galleryUnavailable = false;
+            await this.fetchGalleryDetails(galleries_code);
+            if (this.galleryUnavailable) {
+                return;
+            }
+
+            const userStore = useUserStore();
+            await userStore.fetchUserData();
+
+            const blockStore = useBlockStore();
+            await blockStore.fetchBlockedUsers();
+            this.updateBlockedState();
+            if (this.showGalleryUnavailable) {
+                return;
+            }
+
+            const likeStore = useLikeStore();
+            await likeStore.fetchLikedPhotos();
+            await likeStore.fetchLikedGalleries();
+            this.updateLikedState();
+
+            const followStore = useFollowStore();
+            await followStore.fetchFollowingList();
+            this.updateFollowingState();
+
+            const notifData = localStorage.getItem('blockNotification');
+            if (notifData) {
+                const { message, description, duration } = JSON.parse(notifData);
+                notification.success({
+                    message,
+                    description,
+                    placement: 'topRight',
+                    duration,
+                });
+                localStorage.removeItem('blockNotification');
+            }
+        },
         toggleDropdown(id) {
             this.activeDropdown = this.activeDropdown === id ? null : id;
         },
@@ -208,6 +242,7 @@ export default {
                 const response = await galleryService.fetchPublicByCode(code, { headers });
                 const d = response.data;
                 this.gallery = d?.data ?? d;
+                this.galleryUnavailable = false;
                 if (this.gallery) {
                     this.updateLikedState();
                     this.updateFollowingState();
@@ -215,6 +250,18 @@ export default {
                 }
             } catch (error) {
                 console.error("Error fetching gallery details:", error);
+                const status = error.response?.status;
+                if (status === 404) {
+                    this.galleryUnavailable = true;
+                    this.gallery = {};
+                } else if (status === 401) {
+                    notification.warning({
+                        message: 'Session',
+                        description: 'Please sign in again to continue.',
+                        placement: 'topRight',
+                        duration: 4,
+                    });
+                }
             }
         },
         async checkLogin() {
@@ -447,6 +494,11 @@ export default {
         },
     },
     watch: {
+        '$route.params.galleries_code': {
+            handler() {
+                this.loadGalleryPage();
+            },
+        },
         'gallery.photo': {
             handler() {
                 this.updateLikedState();

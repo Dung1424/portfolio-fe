@@ -30,11 +30,28 @@ const mediaBase = useMediaBase()
 const route = useRoute()
 const router = useRouter()
 const searchQuery = ref('')
+/** Phạm vi tìm kiếm header: ảnh, gallery hoặc photographer */
+const searchScope = ref<'photos' | 'galleries' | 'photographers'>('photos')
 
 const userMenuOpen = ref(false)
 const notifOpen = ref(false)
 const mobileNavOpen = ref(false)
 const searchScopeOpen = ref(false)
+
+const searchScopeLabel = computed(() => {
+  if (searchScope.value === 'galleries') {
+    return 'Galleries'
+  }
+  if (searchScope.value === 'photographers') {
+    return 'Photographers'
+  }
+  return 'Photos'
+})
+
+function setSearchScope(scope: 'photos' | 'galleries' | 'photographers') {
+  searchScope.value = scope
+  searchScopeOpen.value = false
+}
 
 const navRef = ref<HTMLElement | null>(null)
 
@@ -56,6 +73,20 @@ const isChatActive = computed(() => route.name === 'Chat')
 const isContactActive = computed(() => route.name === 'Contact')
 const isBlogActive = computed(() => route.name === 'Blog' || route.name === 'BlogDetails')
 const isCategoryActive = computed(() => route.name === 'Category' || route.name === 'DetailsCategory')
+
+watch(
+  () => route.query.type,
+  (t) => {
+    if (t === 'galleries') {
+      searchScope.value = 'galleries'
+    } else if (t === 'photographers') {
+      searchScope.value = 'photographers'
+    } else {
+      searchScope.value = 'photos'
+    }
+  },
+  { immediate: true },
+)
 
 onMounted(async () => {
   await authStore.checkLoginStatus()
@@ -108,7 +139,17 @@ function goToAddPhotos() {
 }
 
 function runSearch() {
-  router.push({ name: 'Search', query: { q: searchQuery.value } })
+  const q = String(searchQuery.value ?? '').trim()
+  const type
+    = searchScope.value === 'galleries'
+      ? 'galleries'
+      : searchScope.value === 'photographers'
+        ? 'photographers'
+        : 'photos'
+  router.push({
+    name: 'Search',
+    query: { q, type },
+  })
 }
 
 async function handleLogoutClick() {
@@ -161,32 +202,54 @@ function toggleNotif() {
         </nav>
       </div>
 
-      <!-- Center: pill search — cạnh phải bo tròn nhờ overflow-hidden + nút xanh full chiều cao -->
+      <!-- Center: pill search — overflow-visible để dropdown không bị cắt (overflow-hidden trước đó chặn click) -->
       <div class="hidden min-w-0 flex-1 px-1 md:block">
         <div
-          class="mx-auto flex h-10 max-w-2xl items-stretch overflow-hidden rounded-full border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
+          class="mx-auto flex h-10 max-w-2xl items-stretch overflow-visible rounded-full border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
         >
-          <div class="relative shrink-0">
+          <div class="relative shrink-0" @mousedown.stop>
             <button
               type="button"
-              class="flex h-full items-center gap-1 px-3 text-[13px] font-medium text-zinc-800 hover:bg-zinc-50"
+              class="flex h-full min-w-0 shrink-0 items-center gap-1 whitespace-nowrap rounded-l-full px-2.5 text-[13px] font-medium text-zinc-800 hover:bg-zinc-50 sm:px-3"
               aria-haspopup="listbox"
               :aria-expanded="searchScopeOpen"
               @click.stop="searchScopeOpen = !searchScopeOpen"
             >
-              Photos
+              {{ searchScopeLabel }}
               <i class="fa-solid fa-chevron-down text-[9px] text-zinc-400" />
             </button>
             <div
               v-show="searchScopeOpen"
-              class="absolute left-0 top-full z-50 mt-1 min-w-[140px] overflow-hidden rounded-lg border border-zinc-200 bg-white py-1 shadow-lg"
-              @click.stop
+              class="absolute left-0 top-full z-[1100] mt-1 min-w-[180px] overflow-hidden rounded-lg border border-zinc-200 bg-white py-1 shadow-lg"
+              role="listbox"
+              @mousedown.stop
             >
-              <button type="button" class="block w-full px-4 py-2 text-left text-sm hover:bg-zinc-50" @click="searchScopeOpen = false">
+              <button
+                type="button"
+                role="option"
+                class="block w-full px-4 py-2 text-left text-sm hover:bg-zinc-50"
+                :class="searchScope === 'photos' ? 'bg-sky-50 font-medium text-[#1877f2]' : ''"
+                @click.stop="setSearchScope('photos')"
+              >
                 Photos
               </button>
-              <button type="button" class="block w-full px-4 py-2 text-left text-sm hover:bg-zinc-50" @click="searchScopeOpen = false">
+              <button
+                type="button"
+                role="option"
+                class="block w-full px-4 py-2 text-left text-sm hover:bg-zinc-50"
+                :class="searchScope === 'galleries' ? 'bg-sky-50 font-medium text-[#1877f2]' : ''"
+                @click.stop="setSearchScope('galleries')"
+              >
                 Galleries
+              </button>
+              <button
+                type="button"
+                role="option"
+                class="block w-full px-4 py-2 text-left text-sm hover:bg-zinc-50"
+                :class="searchScope === 'photographers' ? 'bg-sky-50 font-medium text-[#1877f2]' : ''"
+                @click.stop="setSearchScope('photographers')"
+              >
+                Photographers
               </button>
             </div>
           </div>
@@ -200,7 +263,7 @@ function toggleNotif() {
           >
           <button
             type="button"
-            class="flex shrink-0 items-center justify-center bg-[#1877f2] px-4 text-white transition hover:bg-[#166fe5] active:bg-[#1464d4]"
+            class="flex shrink-0 items-center justify-center rounded-r-full bg-[#1877f2] px-4 text-white transition hover:bg-[#166fe5] active:bg-[#1464d4]"
             aria-label="Search"
             @click="runSearch"
           >
@@ -397,7 +460,22 @@ function toggleNotif() {
       class="border-t border-zinc-100 bg-white px-4 py-4 md:hidden"
     >
       <div class="mb-4 flex h-10 items-stretch overflow-hidden rounded-full border border-zinc-200 bg-white shadow-sm">
-        <span class="flex shrink-0 items-center px-2 text-xs font-medium text-zinc-600">Photos</span>
+        <label class="sr-only" for="mobile-search-scope">Search scope</label>
+        <select
+          id="mobile-search-scope"
+          v-model="searchScope"
+          class="max-w-[9.5rem] shrink-0 border-0 bg-zinc-50 px-2 text-xs font-medium text-zinc-800 focus:outline-none focus:ring-0"
+        >
+          <option value="photos">
+            Photos
+          </option>
+          <option value="galleries">
+            Galleries
+          </option>
+          <option value="photographers">
+            Photographers
+          </option>
+        </select>
         <span class="my-2 w-px shrink-0 bg-zinc-200" />
         <input
           v-model="searchQuery"

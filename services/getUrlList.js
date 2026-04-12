@@ -138,7 +138,9 @@ export function getUrlList() {
     getGalleryDetailUser: galleries_code => `${baseUrl}/Gallery/DetailByCode/${galleries_code}`,
     getTotalLikes: username => `${baseUrl}/User/TotalLikes/${enc(username)}`,
     getPhotosByCategorySlugs: slugs => `${baseUrl}/Category/ListPhotos?slugs=${slugs}`,
-    searchPhotos: `${baseUrl}/Photo/Search`,
+    searchPhotos: `${baseUrl}/Search/Photos`,
+    searchGalleries: `${baseUrl}/Search/Galleries`,
+    searchUsers: `${baseUrl}/Search/Users`,
 
     // follow/unfollow
     followUser: `${baseUrl}/Follow/Create`,
