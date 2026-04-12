@@ -1,5 +1,26 @@
 <template>
     <div
+        v-if="profileUnavailable"
+        class="flex min-h-screen flex-col items-center justify-center bg-[#f7f8fa] px-6 py-16 text-center [font-family:ui-sans-serif,system-ui,sans-serif]"
+    >
+        <div class="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-zinc-200/80 text-zinc-500">
+            <i class="fa-regular fa-user text-[2.25rem]" aria-hidden="true" />
+        </div>
+        <h1 class="mb-2 text-2xl font-semibold tracking-tight text-zinc-900 sm:text-[1.75rem]">
+            Profile not available
+        </h1>
+        <p class="max-w-md text-base leading-relaxed text-zinc-600">
+            This profile could not be found. The account may not exist, may be unavailable, or you may not have access to view it.
+        </p>
+        <NuxtLink
+            :to="{ name: 'Index' }"
+            class="mt-8 inline-flex items-center justify-center rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800"
+        >
+            Back to home
+        </NuxtLink>
+    </div>
+    <div
+        v-else
         class="min-h-screen overflow-x-hidden bg-white font-sans text-zinc-900 antialiased [font-family:ui-sans-serif,system-ui,sans-serif]"
     >
         <section class="relative w-full pt-0">
@@ -346,6 +367,8 @@ export default {
             isMyProfile: false,
             isFollowing: false,
             isBlocked: false,
+            /** GET User/DetailByUsername… hoặc list/total likes / galleries list trả 404 (user không tồn tại, khóa, block với Bearer) */
+            profileUnavailable: false,
             followersPopupVisible: false,
             followingPopupVisible: false,
         };
@@ -426,9 +449,32 @@ export default {
             }
             return true;
         },
+        authAxiosConfig() {
+            if (!import.meta.client) {
+                return {};
+            }
+            const token = localStorage.getItem('token');
+            if (!token) {
+                return {};
+            }
+            return { headers: { Authorization: `Bearer ${token}` } };
+        },
         async reloadProfileData() {
-            await this.fetchUserData();
+            this.profileUnavailable = false;
+            this.photos = [];
+            this.galleries = [];
+            this.photoLikesCount = 0;
+
+            if (!await this.fetchUserData()) {
+                this.user = {};
+                return;
+            }
+
             await Promise.all([this.fetchPhotos(), this.fetchGalleries(), this.fetchTotalLikes()]);
+            if (this.profileUnavailable) {
+                this.user = {};
+                return;
+            }
 
             // Token / localStorage / follow–block: chỉ trên client (SSR không có localStorage)
             if (!import.meta.client) {
@@ -452,21 +498,29 @@ export default {
         async fetchUserData() {
             const username = this.$route.params.username;
             try {
-                const response = await profileService.fetchByUsername(username);
+                const response = await profileService.fetchByUsername(username, this.authAxiosConfig());
                 const d = response.data;
                 this.user = d.user ?? d;
+                return true;
             } catch (error) {
                 console.error('Error fetching user data:', error);
+                if (error.response?.status === 404) {
+                    this.profileUnavailable = true;
+                }
+                return false;
             }
         },
         async fetchTotalLikes() {
             const username = this.$route.params.username;
             try {
-                const response = await profileService.fetchTotalLikes(username);
+                const response = await profileService.fetchTotalLikes(username, this.authAxiosConfig());
                 const d = response.data;
                 this.photoLikesCount = d.total_likes ?? d.data?.total_likes ?? 0;
             } catch (error) {
                 console.error('Error fetching total likes:', error);
+                if (error.response?.status === 404) {
+                    this.profileUnavailable = true;
+                }
                 this.photoLikesCount = 0;
             }
         },
@@ -573,28 +627,29 @@ export default {
         async fetchPhotos() {
             const username = this.$route.params.username;
             try {
-                const response = await profileService.fetchPhotos(username);
+                const response = await profileService.fetchPhotos(username, this.authAxiosConfig());
                 const d = response.data;
                 this.photos = Array.isArray(d) ? d : (d?.data ?? []);
             } catch (error) {
                 console.error('Error fetching photos:', error);
+                if (error.response?.status === 404) {
+                    this.profileUnavailable = true;
+                }
+                this.photos = [];
             }
         },
         async fetchGalleries() {
             const username = this.$route.params.username;
             try {
-                let headers = {};
-                if (import.meta.client) {
-                    const token = localStorage.getItem('token');
-                    if (token) {
-                        headers = { Authorization: `Bearer ${token}` };
-                    }
-                }
-                const response = await profileService.fetchGalleries(username, { headers });
+                const response = await profileService.fetchGalleries(username, this.authAxiosConfig());
                 const d = response.data;
                 this.galleries = Array.isArray(d) ? d : (d?.data ?? []);
             } catch (error) {
                 console.error('Error fetching galleries:', error);
+                if (error.response?.status === 404) {
+                    this.profileUnavailable = true;
+                }
+                this.galleries = [];
             }
         },
         toggleBio() {
@@ -656,8 +711,8 @@ export default {
 
             const followStore = useFollowStore();
             try {
-                const userData = await profileService.fetchByUsername(username);
-                const userId = userData.data.id;
+                const userData = await profileService.fetchByUsername(username, this.authAxiosConfig());
+                const userId = (userData.data?.user ?? userData.data)?.id ?? userData.data?.id;
 
                 if (followStore.followingList.includes(userId)) {
                     await followStore.unfollowUser(userId);

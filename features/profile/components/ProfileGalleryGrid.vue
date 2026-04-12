@@ -46,7 +46,7 @@
                 class="flex h-[200px] overflow-hidden rounded-lg bg-neutral-100"
             >
                 <img
-                    :src="gallery.photo[0].image_url"
+                    :src="resolveMediaUrl(gallery.photo[0].image_url)"
                     :alt="gallery.photo[0].title"
                     class="h-full w-full object-cover"
                 />
@@ -58,7 +58,7 @@
                 <img
                     v-for="photo in gallery.photo.slice(0, 4)"
                     :key="photo.id"
-                    :src="photo.image_url"
+                    :src="resolveMediaUrl(photo.image_url)"
                     :alt="photo.title"
                     class="h-[100px] w-full rounded-lg object-cover"
                 />
@@ -72,7 +72,7 @@
                     <img
                         v-if="gallery.user && gallery.user.profile_picture"
                         class="h-8 w-8 shrink-0 rounded-full object-cover"
-                        :src="`${apiOrigin}${gallery.user.profile_picture}`"
+                        :src="resolveMediaUrl(gallery.user.profile_picture)"
                         alt=""
                     />
                     <img
@@ -125,13 +125,10 @@ export default {
             await useLikeStore().fetchLikedGalleries()
             return true
         })
-        return { likesReady }
+        const { resolveMediaUrl } = useResolvePublicMediaUrl()
+        return { likesReady, resolveMediaUrl }
     },
     computed: {
-        apiOrigin() {
-            const config = useRuntimeConfig()
-            return config.public?.apiBase || ''
-        },
         likeStore() {
             return useLikeStore()
         },

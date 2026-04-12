@@ -174,6 +174,8 @@ export default {
             galleryToDelete: null,
             activeTab: 'all',
             searchQuery: '',
+            /** Chỉ lọc sau khi bấm Search / Enter */
+            appliedSearchQuery: '',
             sortBy: 'date',
             sortAscending: false,
             pageSize: 25,
@@ -188,28 +190,38 @@ export default {
             return store.galleries;
         },
         filteredGalleries() {
-            let filtered = [...this.galleries];
+            const list = Array.isArray(this.galleries) ? this.galleries : [];
+            let filtered = [...list];
             if (this.activeTab === 'public') {
-                filtered = filtered.filter(gallery => gallery.visibility === 0);
-            } else if (this.activeTab === 'private') {
-                filtered = filtered.filter(gallery => gallery.visibility === 1);
-            }
-            if (this.searchQuery) {
-                const searchQueryLower = this.searchQuery.toLowerCase();
-                filtered = filtered.filter(gallery =>
-                    gallery.galleries_name.toLowerCase().includes(searchQueryLower) ||
-                    gallery.galleries_description.toLowerCase().includes(searchQueryLower)
+                filtered = filtered.filter(
+                    g => g.visibility === 0 || g.visibility === '0',
                 );
+            } else if (this.activeTab === 'private') {
+                filtered = filtered.filter(
+                    g => g.visibility === 1 || g.visibility === '1',
+                );
+            }
+            const q = String(this.appliedSearchQuery ?? '').trim().toLowerCase();
+            if (q) {
+                filtered = filtered.filter((gallery) => {
+                    const name = String(gallery.galleries_name ?? '').toLowerCase();
+                    const desc = String(gallery.galleries_description ?? '').toLowerCase();
+                    return name.includes(q) || desc.includes(q);
+                });
             }
             if (this.sortBy === 'date') {
                 filtered.sort((a, b) => {
-                    const va = new Date(a.created_at).getTime();
-                    const vb = new Date(b.created_at).getTime();
+                    const va = new Date(a.created_at || 0).getTime() || 0;
+                    const vb = new Date(b.created_at || 0).getTime() || 0;
                     return this.sortAscending ? va - vb : vb - va;
                 });
             } else if (this.sortBy === 'name') {
                 filtered.sort((a, b) => {
-                    const c = a.galleries_name.localeCompare(b.galleries_name);
+                    const c = String(a.galleries_name || '').localeCompare(
+                        String(b.galleries_name || ''),
+                        undefined,
+                        { sensitivity: 'base' },
+                    );
                     return this.sortAscending ? c : -c;
                 });
             }
@@ -328,6 +340,7 @@ export default {
             }
         },
         searchGalleries() {
+            this.appliedSearchQuery = String(this.searchQuery ?? '').trim();
             this.$refs.gallerySearchInput?.blur?.();
         },
         sortGalleries() {

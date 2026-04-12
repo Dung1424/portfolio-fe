@@ -26,14 +26,14 @@
                     class="block h-full w-full"
                 >
                     <img
-                        :src="photo.image_url"
+                        :src="resolveMediaUrl(photo.image_url)"
                         :alt="photo.title"
                         class="h-full w-full object-cover transition duration-150 group-hover:opacity-95"
                     />
                 </NuxtLink>
                 <div v-else class="block h-full w-full">
                     <img
-                        :src="photo.image_url"
+                        :src="resolveMediaUrl(photo.image_url)"
                         :alt="photo.title"
                         class="h-full w-full object-cover opacity-80"
                     />
@@ -67,7 +67,7 @@
                         </li>
                         <li
                             class="cursor-pointer px-4 py-2 text-sm text-gray-800 hover:bg-gray-50"
-                            @click="downloadImage(photo.image_url, photo.title)"
+                            @click="downloadImage(resolveMediaUrl(photo.image_url), photo.title)"
                         >
                             <i class="fa-solid fa-download mr-2 w-4 text-gray-500" /> Download
                         </li>
@@ -95,6 +95,10 @@
 <script>
 export default {
     name: 'PrivatePhotos',
+    setup() {
+        const { resolveMediaUrl } = useResolvePublicMediaUrl()
+        return { resolveMediaUrl }
+    },
     props: {
         photos: {
             type: Array,

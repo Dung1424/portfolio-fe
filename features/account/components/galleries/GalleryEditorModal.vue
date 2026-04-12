@@ -169,7 +169,8 @@ export default {
                 const response = await accountService.fetchGalleryDetails(this.galleriesCode, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
-                const d = response.data.data;
+                const raw = response.data;
+                const d = raw?.data ?? raw;
                 this.form.title = d.galleries_name;
                 this.form.description = d.galleries_description || '';
                 this.visibilityUi = d.visibility === 0 ? 'public' : 'private';

@@ -68,11 +68,11 @@ export default {
             required: true,
         },
         galleryId: {
-            type: Number,
+            type: [String, Number],
             required: true,
         },
         violatorId: {
-            type: Number,
+            type: [String, Number],
             required: true,
         }
     },
@@ -144,4 +144,3 @@ export default {
     }
 };
 </script>
-

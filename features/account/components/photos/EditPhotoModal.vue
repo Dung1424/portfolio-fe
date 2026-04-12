@@ -27,7 +27,7 @@
             <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
                 <div class="mb-4 text-center">
                     <img
-                        :src="localPhoto.image_url || '/front_assets/img/img_5.jpg'"
+                        :src="previewImageSrc"
                         alt="Photo preview"
                         class="max-h-[min(40vh,500px)] w-full rounded-lg object-contain"
                     />
@@ -181,6 +181,10 @@ import { notification } from 'ant-design-vue';
 import { accountService } from '~/features/account/services/account.api.js'
 
 export default {
+    setup() {
+        const { resolveMediaUrl } = useResolvePublicMediaUrl()
+        return { resolveMediaUrl }
+    },
     props: {
         isVisible: {
             type: Boolean,
@@ -219,6 +223,15 @@ export default {
     },
     mounted() {
         this.fetchCategoriesAndTags();
+    },
+    computed: {
+        previewImageSrc() {
+            const u = this.localPhoto?.image_url
+            if (!u) {
+                return '/front_assets/img/img_5.jpg'
+            }
+            return this.resolveMediaUrl(u) || '/front_assets/img/img_5.jpg'
+        },
     },
     methods: {
         async fetchPhotoDetails(photoId) {

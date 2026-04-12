@@ -188,7 +188,10 @@ export default {
             showEditModal: false,
             selectedPhotoId: null,
             activeTab: 'all',
+            /** Ô nhập (chưa áp dụng lọc cho đến khi bấm Search / Enter) */
             searchQuery: '',
+            /** Từ khóa đang dùng để lọc — chỉ cập nhật khi gọi searchPhotos() */
+            appliedSearchQuery: '',
             sortBy: 'date',
             sortAscending: false,
             pageSize: 25,
@@ -199,31 +202,40 @@ export default {
     },
     computed: {
         filteredPhotos() {
-            let filtered = [...this.photos];
+            const list = Array.isArray(this.photos) ? this.photos : [];
+            let filtered = [...list];
             if (this.activeTab === 'public') {
-                filtered = filtered.filter(photo => photo.privacy_status == 0);
+                filtered = filtered.filter(photo => photo.privacy_status == 0 || photo.privacy_status === '0');
             } else if (this.activeTab === 'private') {
-                filtered = filtered.filter(photo => photo.privacy_status == 1);
+                filtered = filtered.filter(photo => photo.privacy_status == 1 || photo.privacy_status === '1');
             }
-            if (this.searchQuery) {
-                const searchQueryLower = this.searchQuery.toLowerCase();
-                filtered = filtered.filter(photo =>
-                    photo.title.toLowerCase().includes(searchQueryLower) ||
-                    photo.description.toLowerCase().includes(searchQueryLower) ||
-                    photo.location.toLowerCase().includes(searchQueryLower) ||
-                    photo.category.category_name.toLowerCase().includes(searchQueryLower) ||
-                    photo.tags.some(tag => tag.tag_name.toLowerCase().includes(searchQueryLower))
-                );
+            const q = String(this.appliedSearchQuery ?? '').trim().toLowerCase();
+            if (q) {
+                filtered = filtered.filter((photo) => {
+                    const hay = (v) => String(v ?? '').toLowerCase();
+                    if (
+                        hay(photo.title).includes(q)
+                        || hay(photo.description).includes(q)
+                        || hay(photo.location).includes(q)
+                        || hay(photo.category?.category_name).includes(q)
+                    ) {
+                        return true;
+                    }
+                    const tags = Array.isArray(photo.tags) ? photo.tags : [];
+                    return tags.some(tag => hay(tag?.tag_name).includes(q));
+                });
             }
             if (this.sortBy === 'date') {
                 filtered.sort((a, b) => {
-                    const va = new Date(a.upload_date).getTime();
-                    const vb = new Date(b.upload_date).getTime();
+                    const va = new Date(a.upload_date || 0).getTime() || 0;
+                    const vb = new Date(b.upload_date || 0).getTime() || 0;
                     return this.sortAscending ? va - vb : vb - va;
                 });
             } else if (this.sortBy === 'name') {
                 filtered.sort((a, b) => {
-                    const c = a.title.localeCompare(b.title);
+                    const c = String(a.title || '').localeCompare(String(b.title || ''), undefined, {
+                        sensitivity: 'base',
+                    });
                     return this.sortAscending ? c : -c;
                 });
             }
@@ -264,7 +276,9 @@ export default {
                         Authorization: `Bearer ${localStorage.getItem('token')}`
                     }
                 });
-                this.photos = response.data.data;
+                const d = response.data;
+                // axios envelope interceptor đã unwrap → response.data là mảng ảnh (không còn { data: [...] })
+                this.photos = Array.isArray(d) ? d : (Array.isArray(d?.data) ? d.data : []);
             } catch (error) {
                 console.error('Error fetching approved photos:', error);
             }
@@ -325,7 +339,7 @@ export default {
             this.$router.push({ name: 'AddPhotos' });
         },
         searchPhotos() {
-            // Bộ lọc theo `searchQuery` là reactive; nút/Enter chỉ xác nhận thao tác (đóng bàn phím mobile)
+            this.appliedSearchQuery = String(this.searchQuery ?? '').trim();
             this.$refs.photoSearchInput?.blur?.();
         },
         sortPhotos() {

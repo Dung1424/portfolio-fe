@@ -1,9 +1,24 @@
 <template>
-    <!-- Nếu user của ảnh bị block, hiển thị placeholder -->
-                <div v-if="isPhotoUserBlocked" class="flex h-screen flex-col items-center justify-center bg-[#f5f5f5] text-center">
-                    <i class="fa-solid fa-circle-xmark mb-5 text-[50px] text-[#ff4d4f]"></i>
-                    <h2 class="mb-2.5 text-[28px] text-[#333]">Something went wrong</h2>
-                    <p class="text-base text-[#666]">Please refresh the page to try again.</p>
+    <!-- Ẩn ảnh: API 404 (inactive / block…), hoặc chủ ảnh nằm trong danh sách chặn (JWT) — UI trung tính, không tiết lộ lý do -->
+                <div
+                    v-if="showPhotoUnavailable"
+                    class="flex min-h-screen flex-col items-center justify-center bg-[#f7f8fa] px-6 py-16 text-center [font-family:ui-sans-serif,system-ui,sans-serif]"
+                >
+                    <div class="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-zinc-200/80 text-zinc-500">
+                        <i class="fa-regular fa-image text-[2.25rem]" aria-hidden="true" />
+                    </div>
+                    <h1 class="mb-2 text-2xl font-semibold tracking-tight text-zinc-900 sm:text-[1.75rem]">
+                        Photo not available
+                    </h1>
+                    <p class="max-w-md text-base leading-relaxed text-zinc-600">
+                        This photo could not be found. It may have been removed, the owner’s account is unavailable, or the link is incorrect.
+                    </p>
+                    <NuxtLink
+                        :to="{ name: 'Index' }"
+                        class="mt-8 inline-flex items-center justify-center rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800"
+                    >
+                        Back to home
+                    </NuxtLink>
                 </div>
             <!-- 500px: nền trang #f7f8fa; cột phải thêm nền nhạt hơn một chút (#eff1f5) + padding; card trong sidebar = trắng -->
             <div v-else class="min-h-screen bg-[#f7f8fa] font-sans text-zinc-900 antialiased [font-family:ui-sans-serif,system-ui,sans-serif]">
@@ -261,6 +276,7 @@ export default {
                 image_url: "",
                 liked: false,
                 user: {
+                    id: undefined,
                     username: "",
                     profile_picture: "",
                     bio: "",
@@ -276,6 +292,8 @@ export default {
             categories: [],
             showAddToGallery: false,
             selectedPhotoId: null,
+            /** true khi API chi tiết trả 404 (vd. is_active = 0, tài khoản khóa + block…) */
+            photoUnavailable: false,
             isPhotoUserBlocked: false,
             photoLikesCount: 0,
             likesPopupVisible: false,
@@ -304,8 +322,26 @@ export default {
                 if (!newToken) {
                     return
                 }
+                this.photoUnavailable = false
+                this.isPhotoUserBlocked = false
+                this.similarPhotos = []
+                this.relatedGalleries = []
+                this.photoLikesCount = 0
+                this.likedUsers = []
+                this.resetPhotoDetailShell()
+
+                const commentStore = useCommentStore()
+                commentStore.comments = []
+                commentStore.currentPage = 1
+                commentStore.lastPage = 1
+                commentStore.total = 0
+
+                const detailOk = await this.fetchPhotoDetail(newToken)
+                if (!detailOk) {
+                    return
+                }
+
                 try {
-                    const commentStore = useCommentStore()
                     await commentStore.fetchComments(newToken, 1)
                     await this.fetchCategories()
 
@@ -318,17 +354,19 @@ export default {
                         await followStore.fetchFollowingList()
                     }
 
-                    await this.fetchPhotoDetail(newToken)
+                    const blockStore = useBlockStore()
+                    await blockStore.fetchBlockedUsers()
+                    this.isPhotoUserBlocked = blockStore.blockedUsers.includes(this.photoDetail.user.id)
+                    if (this.isPhotoUserBlocked) {
+                        return
+                    }
+
                     await this.fetchPhotoLikes(newToken)
                     await this.fetchSimilarPhotos(newToken)
                     await this.fetchRelatedGalleries(newToken)
 
                     this.updateLikedState()
                     this.updateLikedGalleriesState()
-
-                    const blockStore = useBlockStore()
-                    await blockStore.fetchBlockedUsers()
-                    this.isPhotoUserBlocked = blockStore.blockedUsers.includes(this.photoDetail.user.id)
                 } catch (error) {
                     console.error('Error loading photo detail:', error)
                 }
@@ -400,6 +438,9 @@ export default {
         userStore() {
             return useUserStore();
         },
+        showPhotoUnavailable() {
+            return this.photoUnavailable || this.isPhotoUserBlocked;
+        },
     },
     beforeMount() {
         if (typeof window !== 'undefined') {
@@ -424,6 +465,26 @@ export default {
         }
     },
     methods: {
+        resetPhotoDetailShell() {
+            this.photoDetail = {
+                title: "",
+                description: "",
+                location: "",
+                upload_date: "",
+                total_views: "",
+                image_url: "",
+                liked: false,
+                user: {
+                    id: undefined,
+                    username: "",
+                    profile_picture: "",
+                    bio: "",
+                },
+                category: {
+                    category_name: "",
+                },
+            }
+        },
         async fetchPhotoDetail(token) {
             try {
                 const tokenFromLocalStorage = localStorage.getItem("token");
@@ -436,9 +497,14 @@ export default {
                 });
                 const d = response.data;
                 this.photoDetail = d?.data ?? d;
+                this.photoUnavailable = false;
                 this.updateLikedState();
+                return true;
             } catch (error) {
                 console.error("Error fetching photo details:", error);
+                const status = error.response?.status;
+                this.photoUnavailable = status === 404;
+                return false;
             }
         },
         async fetchPhotoLikes(token, page = 1) {
