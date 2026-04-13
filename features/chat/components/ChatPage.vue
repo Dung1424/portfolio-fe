@@ -1,79 +1,384 @@
 <script setup>
-import { picsumAvatarUrl } from '~/utils/picsumAvatar'
+import { picsumAvatarUrl } from '~/utils/picsumAvatar.js'
+import { useUserStore } from '~/stores/userStore.js'
+import { useResolvePublicMediaUrl } from '~/composables/useMediaBase'
+import { notification } from 'ant-design-vue'
+import { chatApi, unwrapChatData } from '~/features/chat/services/chat.api.js'
+import { profileService } from '~/features/profile/services/profile.api.js'
+import {
+  connectChatSocket,
+  disconnectChatSocket,
+  getChatSocket,
+  emitRoomJoin,
+} from '~/services/chatSocket.js'
 
-/**
- * Messages — mock data; bố cục kiểu Apple Messages (2 tầng header + danh sách có cột xanh).
- */
-const now = new Date()
+const route = useRoute()
+const router = useRouter()
+const userStore = useUserStore()
+const { resolveMediaUrl } = useResolvePublicMediaUrl()
+
+const peerProfileCache = new Map()
 
 function timeLabel(d) {
   const t = typeof d === 'string' ? new Date(d) : d
-  const diff = now - t
-  if (diff < 86_400_000)
+  const diff = Date.now() - t.getTime()
+  if (diff < 86_400_000) {
     return t.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-  if (diff < 7 * 86_400_000)
+  }
+  if (diff < 7 * 86_400_000) {
     return t.toLocaleDateString(undefined, { weekday: 'short' })
+  }
   return t.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-/** Ảnh demo ổn định theo seed (Picsum) */
 function avatarSrc(seed) {
   return picsumAvatarUrl(seed)
 }
 
-const mockConversations = [
-  {
-    id: '1',
-    avatarSeed: 'pf-chat-minhanh',
-    name: 'Minh Anh',
-    username: 'minhanh',
-    lastMessage: 'Ảnh bộ sunset đẹp quá, cho mình xin preset nhé!',
-    updatedAt: new Date(now - 18 * 60_000),
-    unread: 2,
-    online: true,
-    messages: [
-      { id: 'm1', text: 'Chào bạn, portfolio của bạn rất ấn tượng.', me: false, at: new Date(now - 120 * 60_000) },
-      { id: 'm2', text: 'Cảm ơn bạn! Rất vui được kết nối.', me: true, at: new Date(now - 115 * 60_000) },
-      { id: 'm3', text: 'Ảnh bộ sunset đẹp quá, cho mình xin preset nhé!', me: false, at: new Date(now - 18 * 60_000) }
-    ]
-  },
-  {
-    id: '2',
-    avatarSeed: 'pf-chat-lightbox',
-    name: 'Studio Lightbox',
-    username: 'lightbox_studio',
-    lastMessage: 'Bạn có slot cuối tuần này không?',
-    updatedAt: new Date(now - 3 * 86_400_000),
-    unread: 0,
-    online: false,
-    messages: [
-      { id: 'm1', text: 'Xin chào, chúng tôi muốn hỏi về chụp sự kiện.', me: false, at: new Date(now - 4 * 86_400_000) },
-      { id: 'm2', text: 'Bạn có slot cuối tuần này không?', me: false, at: new Date(now - 3 * 86_400_000) }
-    ]
-  },
-  {
-    id: '3',
-    avatarSeed: 'pf-chat-hamy',
-    name: 'Hà My',
-    username: 'hamy_photo',
-    lastMessage: 'Ok, gửi mình link drive nhé.',
-    updatedAt: new Date(now - 45 * 60_000),
-    unread: 0,
-    online: true,
-    messages: [
-      { id: 'm1', text: 'Mình đã xem gallery wedding — rất ổn.', me: false, at: new Date(now - 50 * 60_000) },
-      { id: 'm2', text: 'Cảm ơn! Mình gửi file raw qua drive được không?', me: true, at: new Date(now - 48 * 60_000) },
-      { id: 'm3', text: 'Ok, gửi mình link drive nhé.', me: false, at: new Date(now - 45 * 60_000) }
-    ]
+function peerUserIdFromParticipants(participants, myUserId) {
+  if (!Array.isArray(participants) || myUserId == null) {
+    return ''
   }
-]
+  const mine = String(myUserId)
+  const other = participants.find(p => String(p.userId) !== mine)
+  return other?.userId != null ? String(other.userId) : ''
+}
 
-const conversations = ref(mockConversations)
+function normalizeLastPreviewObject(p) {
+  if (p == null) {
+    return null
+  }
+  if (typeof p === 'string') {
+    return { text: p, senderUserId: null }
+  }
+  return {
+    text: p.text ?? '',
+    senderUserId: p.senderUserId != null ? String(p.senderUserId) : null,
+  }
+}
+
+function normalizeParticipantReceipts(list) {
+  if (!Array.isArray(list)) {
+    return []
+  }
+  return list.map((r) => {
+    const read = r.lastReadMessageId ?? r.lastReadUpToMessageId ?? r.readUpToMessageId ?? null
+    return {
+      userId: String(r.userId),
+      lastDeliveredMessageId: r.lastDeliveredMessageId != null ? String(r.lastDeliveredMessageId) : null,
+      lastReadMessageId: read != null ? String(read) : null,
+      updatedAt: r.updatedAt,
+    }
+  })
+}
+
+function maxWatermarkId(a, b) {
+  if (!a) {
+    return b ?? null
+  }
+  if (!b) {
+    return a
+  }
+  return compareMongoObjectIdHex(a, b) >= 0 ? a : b
+}
+
+function patchParticipantReceipts(conv, receipts) {
+  if (!conv || !Array.isArray(receipts) || receipts.length === 0) {
+    return
+  }
+  const incoming = normalizeParticipantReceipts(receipts)
+  const cur = Array.isArray(conv.participantReceipts) ? conv.participantReceipts : []
+  const byUser = new Map()
+  for (const r of cur) {
+    byUser.set(String(r.userId), { ...r })
+  }
+  for (const r of incoming) {
+    const uid = String(r.userId)
+    const prev = byUser.get(uid)
+    if (!prev) {
+      byUser.set(uid, { ...r })
+    }
+    else {
+      byUser.set(uid, {
+        userId: uid,
+        lastDeliveredMessageId: maxWatermarkId(prev.lastDeliveredMessageId, r.lastDeliveredMessageId),
+        lastReadMessageId: maxWatermarkId(prev.lastReadMessageId, r.lastReadMessageId),
+        updatedAt: r.updatedAt ?? prev.updatedAt,
+      })
+    }
+  }
+  conv.participantReceipts = [...byUser.values()]
+}
+
+function mergeParticipantReceiptsFromEnvelope(conv, data) {
+  if (!conv || !data || typeof data !== 'object') {
+    return
+  }
+  if (Array.isArray(data.participantReceipts)) {
+    patchParticipantReceipts(conv, data.participantReceipts)
+  }
+}
+
+function compareMongoObjectIdHex(a, b) {
+  const sa = String(a ?? '').trim()
+  const sb = String(b ?? '').trim()
+  if (!sa && !sb) {
+    return 0
+  }
+  if (!sa) {
+    return -1
+  }
+  if (!sb) {
+    return 1
+  }
+  if (sa === sb) {
+    return 0
+  }
+  const hex = /^[0-9a-f]{24}$/i
+  if (hex.test(sa) && hex.test(sb)) {
+    return sa < sb ? -1 : 1
+  }
+  return sa.localeCompare(sb)
+}
+
+function messageIdAtOrBeforeWatermark(messageId, watermarkId) {
+  if (!messageId || !watermarkId) {
+    return false
+  }
+  return compareMongoObjectIdHex(messageId, watermarkId) <= 0
+}
+
+function isMongoObjectIdString(id) {
+  const s = String(id ?? '')
+  return s.length === 24 && /^[0-9a-f]{24}$/i.test(s)
+}
+
+function peerReceiptForConversation(conv) {
+  const my = myUserId.value
+  if (!conv?.participantReceipts?.length || my == null) {
+    return null
+  }
+  return conv.participantReceipts.find(r => String(r.userId) !== String(my)) ?? null
+}
+
+function outgoingMessageReceiptLabel(conv, messageId) {
+  if (!conv || conv.type !== 'direct' || !isMongoObjectIdString(messageId)) {
+    return ''
+  }
+  const peer = peerReceiptForConversation(conv)
+  if (!peer) {
+    return '\u0110\u00e3 g\u1eedi'
+  }
+  const mid = String(messageId)
+  const readW = peer.lastReadMessageId
+  const delW = peer.lastDeliveredMessageId
+  if (readW && messageIdAtOrBeforeWatermark(mid, readW)) {
+    return '\u0110\u00e3 xem'
+  }
+  if (delW && messageIdAtOrBeforeWatermark(mid, delW)) {
+    return '\u0110\u00e3 nh\u1eadn'
+  }
+  return '\u0110\u00e3 g\u1eedi'
+}
+
+function lastOwnUiMessageId(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return null
+  }
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const row = messages[i]
+    if (row?.me && row.id != null) {
+      return String(row.id)
+    }
+  }
+  return null
+}
+
+const receiptDetailForMessageId = ref(null)
+
+function toggleOutgoingReceiptDetail(messageId) {
+  if (messageId == null) {
+    return
+  }
+  const id = String(messageId)
+  receiptDetailForMessageId.value = receiptDetailForMessageId.value === id ? null : id
+}
+
+function shouldShowOutgoingReceipt(messages, messageId, conv) {
+  if (messageId == null || !conv) {
+    return false
+  }
+  const label = outgoingMessageReceiptLabel(conv, messageId)
+  if (!label) {
+    return false
+  }
+  const mid = String(messageId)
+  const lastOwn = lastOwnUiMessageId(messages)
+  if (lastOwn != null && lastOwn === mid) {
+    return true
+  }
+  return receiptDetailForMessageId.value === mid
+}
+
+function mapApiConversationToUi(apiConv, myUserIdVal) {
+  const peerId = peerUserIdFromParticipants(apiConv.participants, myUserIdVal)
+  const last = lastPreviewText(apiConv)
+  const t = apiConv.lastMessageAt || apiConv.updatedAt
+  return {
+    id: String(apiConv.id),
+    type: apiConv.type ?? 'direct',
+    peerUserId: peerId,
+    name: peerId ? `User ${String(peerId).replace(/-/g, '').slice(0, 8)}` : 'Chat',
+    username: 'user',
+    peerAvatarUrl: '',
+    peerProfileLoaded: false,
+    lastMessage: last,
+    lastMessageId: apiConv.lastMessageId != null ? String(apiConv.lastMessageId) : null,
+    lastMessagePreview: normalizeLastPreviewObject(apiConv.lastMessagePreview),
+    updatedAt: t ? new Date(t) : new Date(),
+    unreadCount: typeof apiConv.unreadCount === 'number' ? apiConv.unreadCount : 0,
+    online: false,
+    messages: [],
+    messagesLoaded: false,
+    messagesNextCursor: null,
+    avatarSeed: peerId || String(apiConv.id),
+    participantReceipts: normalizeParticipantReceipts(apiConv.participantReceipts),
+  }
+}
+
+function lastPreviewText(apiConv) {
+  const p = apiConv.lastMessagePreview
+  if (p == null) {
+    return ''
+  }
+  if (typeof p === 'string') {
+    return p
+  }
+  return p.text ?? ''
+}
+
+async function fetchPeerProfile(peerUserId) {
+  if (!peerUserId) {
+    return null
+  }
+  if (peerProfileCache.has(peerUserId)) {
+    return peerProfileCache.get(peerUserId)
+  }
+  try {
+    const token = import.meta.client ? localStorage.getItem('token') : null
+    const res = await profileService.fetchByUserId(peerUserId, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    const raw = res?.data?.data ?? res?.data
+    const user = raw?.user ?? raw
+    if (user?.id) {
+      peerProfileCache.set(peerUserId, user)
+      return user
+    }
+  }
+  catch (e) {
+    console.error('fetchPeerProfile', e)
+  }
+  return null
+}
+
+function applyPeerUserToConversation(conv, user) {
+  if (!user || !conv) {
+    return
+  }
+  conv.name = (user.name && String(user.name).trim()) || user.username || conv.name
+  conv.username = user.username || conv.username
+  const pic = user.profile_picture
+  conv.peerAvatarUrl = pic ? resolveMediaUrl(pic) : ''
+  conv.peerProfileLoaded = true
+}
+
+async function enrichAllConversationPeers(list) {
+  const ids = [...new Set(list.map(c => c.peerUserId).filter(Boolean))]
+  await Promise.all(
+    ids.map(async (pid) => {
+      const user = await fetchPeerProfile(String(pid))
+      if (!user) {
+        return
+      }
+      for (const c of list) {
+        if (String(c.peerUserId) === String(pid)) {
+          applyPeerUserToConversation(c, user)
+        }
+      }
+    }),
+  )
+}
+
+function applyPeerHintsFromRoute() {
+  const cid = route.query.conversationId
+  const peerName = route.query.peerName
+  const peerUsername = route.query.peerUsername
+  if (!cid || !peerName) {
+    return
+  }
+  const c = conversations.value.find(x => x.id === String(cid))
+  if (c) {
+    c.name = String(peerName)
+    if (peerUsername) {
+      c.username = String(peerUsername)
+    }
+  }
+}
+
+function mapApiMessageToUi(raw, myId) {
+  let me
+  if (typeof raw?.isOwn === 'boolean') {
+    me = raw.isOwn
+  }
+  else {
+    const sid = raw?.senderUserId
+    me = myId != null && sid != null && String(sid) === String(myId)
+  }
+  const at = raw?.createdAt
+    ? new Date(raw.createdAt)
+    : raw?.updatedAt
+      ? new Date(raw.updatedAt)
+      : new Date()
+  let text = raw?.text ?? ''
+  if (!text && Array.isArray(raw?.attachments) && raw.attachments.length > 0) {
+    text = '[Attachment]'
+  }
+  return {
+    id: String(raw?.id ?? `msg-${Date.now()}`),
+    text,
+    me,
+    at,
+  }
+}
+
+function sortMessagesByTimeAsc(items) {
+  return [...items].sort((a, b) => a.at.getTime() - b.at.getTime())
+}
+
+const MESSAGES_CHUNK_SIZE = 20
+
+function nextMessagesCursorFromData(data) {
+  if (!data || typeof data !== 'object') {
+    return null
+  }
+  if (data.hasMore !== true) {
+    return null
+  }
+  const c = data.nextCursor
+  return c != null && String(c).length ? String(c) : null
+}
+
+const conversations = ref([])
+const listFolder = ref('inbox')
+const listLoading = ref(false)
+const messagesLoading = ref(false)
+const loadingOlderMessages = ref(false)
+const sendPending = ref(false)
 const query = ref('')
-const selectedId = ref(mockConversations[0]?.id ?? null)
+const selectedId = ref(null)
 const draft = ref('')
 const mobileShowThread = ref(false)
-/** fallback khi ảnh avatar lỗi (Set trong ref — gán lại để trigger) */
 const brokenAvatarIds = ref(new Set())
 
 function markAvatarBroken(id) {
@@ -88,44 +393,441 @@ function isAvatarBroken(id) {
 
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase()
-  if (!q)
+  if (!q) {
     return conversations.value
+  }
   return conversations.value.filter(
     c =>
       c.name.toLowerCase().includes(q)
       || c.username.toLowerCase().includes(q)
-      || c.lastMessage.toLowerCase().includes(q)
+      || c.lastMessage.toLowerCase().includes(q),
   )
 })
 
 const active = computed(() =>
-  conversations.value.find(c => c.id === selectedId.value) ?? null
+  conversations.value.find(c => c.id === selectedId.value) ?? null,
 )
 
+const activeMessageRows = computed(() => {
+  const list = active.value?.messages
+  if (!list?.length) {
+    return []
+  }
+  return list.map((msg, i) => {
+    const prev = list[i - 1]
+    const next = list[i + 1]
+    const sameRunPrev = prev && Boolean(prev.me) === Boolean(msg.me)
+    const sameRunNext = next && Boolean(next.me) === Boolean(msg.me)
+    return {
+      msg,
+      index: i,
+      showMeta: !sameRunNext,
+      groupFirst: !sameRunPrev,
+      groupLast: !sameRunNext,
+    }
+  })
+})
+
 const messagesScrollEl = ref(null)
+const LOAD_OLDER_SCROLL_THRESHOLD_PX = 72
+
+const lastReadWatermarkByConvId = new Map()
+let readDebounceTimer = null
+const READ_DEBOUNCE_MS = 520
+const NEAR_BOTTOM_PX = 96
+
+function isMessagesScrollNearBottom(el) {
+  if (!el) {
+    return false
+  }
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX
+}
+
+function bumpConversationRowFromMessage(conv, raw, ui) {
+  conv.lastMessage = ui.text
+  conv.updatedAt = ui.at
+  const rid = raw?.id
+  if (rid != null) {
+    conv.lastMessageId = String(rid)
+  }
+  conv.lastMessagePreview = {
+    text: ui.text,
+    senderUserId: raw?.senderUserId != null ? String(raw.senderUserId) : null,
+  }
+}
+
+async function markConversationReadUpTo(conversationId, upToMessageId) {
+  const conv = conversations.value.find(c => c.id === String(conversationId))
+  if (!conv) {
+    return
+  }
+  const mid = upToMessageId != null
+    ? String(upToMessageId)
+    : (conv.messages.length ? String(conv.messages[conv.messages.length - 1].id) : '')
+  if (!mid) {
+    return
+  }
+  if (lastReadWatermarkByConvId.get(conv.id) === mid) {
+    return
+  }
+  try {
+    const res = await chatApi.postRead(conv.id, { upToMessageId: mid })
+    const data = unwrapChatData(res)
+    if (typeof data?.readerUnreadCount === 'number') {
+      conv.unreadCount = data.readerUnreadCount
+    }
+    mergeParticipantReceiptsFromEnvelope(conv, data)
+    lastReadWatermarkByConvId.set(conv.id, mid)
+  }
+  catch (e) {
+    console.error('postRead', e)
+  }
+}
+
+function scheduleMarkReadForOpenConversation(convId) {
+  if (!convId || String(selectedId.value) !== String(convId)) {
+    return
+  }
+  clearTimeout(readDebounceTimer)
+  readDebounceTimer = setTimeout(() => {
+    readDebounceTimer = null
+    const c = conversations.value.find(x => x.id === String(convId))
+    if (!c || String(selectedId.value) !== String(convId)) {
+      return
+    }
+    const last = c.messages[c.messages.length - 1]
+    if (!last) {
+      return
+    }
+    markConversationReadUpTo(convId, last.id)
+  }, READ_DEBOUNCE_MS)
+}
+
+function onMessagesScroll(e) {
+  const el = e.target
+  if (!el) {
+    return
+  }
+  if (!loadingOlderMessages.value && active.value?.messagesNextCursor && el.scrollTop <= LOAD_OLDER_SCROLL_THRESHOLD_PX) {
+    loadOlderMessages()
+  }
+  if (
+    active.value
+    && String(selectedId.value) === String(active.value.id)
+    && isMessagesScrollNearBottom(el)
+  ) {
+    scheduleMarkReadForOpenConversation(active.value.id)
+  }
+}
 
 function scrollMessagesToBottom() {
   nextTick(() => {
     const el = messagesScrollEl.value
-    if (el)
+    if (el) {
       el.scrollTop = el.scrollHeight
+    }
   })
 }
 
-/** Chỉ cuộn khi đổi hội thoại / gửi tin — không watch length (tránh nhảy layout sau mount). */
-watch(selectedId, () => scrollMessagesToBottom())
+const myUserId = computed(() => userStore.user?.id ?? null)
 
-onMounted(() => {
+function onConversationRead(payload) {
+  const cid = payload?.conversationId != null ? String(payload.conversationId) : ''
+  if (!cid) {
+    return
+  }
+  const conv = conversations.value.find(c => c.id === cid)
+  if (!conv) {
+    return
+  }
+  if (Array.isArray(payload?.participantReceipts)) {
+    patchParticipantReceipts(conv, payload.participantReceipts)
+  }
+  else {
+    const reader = payload?.readerUserId
+    const upTo = payload?.upToMessageId
+    if (reader != null && upTo != null && isMongoObjectIdString(upTo)) {
+      patchParticipantReceipts(conv, [
+        {
+          userId: String(reader),
+          lastReadMessageId: String(upTo),
+          lastDeliveredMessageId: String(upTo),
+        },
+      ])
+    }
+  }
+  const reader = payload?.readerUserId
+  if (reader != null && myUserId.value != null && String(reader) === String(myUserId.value)) {
+    const n = payload?.readerUnreadCount
+    if (typeof n === 'number') {
+      conv.unreadCount = n
+    }
+  }
+}
+
+function onMessageNew(payload) {
+  const conversationId = payload?.conversationId != null ? String(payload.conversationId) : ''
+  const raw = payload?.message
+  if (!conversationId || !raw) {
+    return
+  }
+  const conv = conversations.value.find(c => c.id === conversationId)
+  if (!conv) {
+    return
+  }
+  const mid = String(raw.id ?? '')
+  if (mid && conv.messages.some(m => String(m.id) === mid)) {
+    return
+  }
+  const ui = mapApiMessageToUi(raw, myUserId.value)
+  conv.messages.push(ui)
+  bumpConversationRowFromMessage(conv, raw, ui)
+
+  const bump = payload?.unreadBumpForUserIds
+  const my = myUserId.value
+  const inBump = Array.isArray(bump) && my != null && bump.some(x => String(x) === String(my))
+  const socketUnread
+    = payload?.unreadCount ?? payload?.conversationUnreadCount ?? payload?.conversation?.unreadCount
+  if (String(selectedId.value) !== conversationId) {
+    if (typeof socketUnread === 'number') {
+      conv.unreadCount = socketUnread
+    }
+    else if (inBump) {
+      conv.unreadCount = (conv.unreadCount ?? 0) + 1
+    }
+  }
+  else if (inBump) {
+    scheduleMarkReadForOpenConversation(conversationId)
+  }
+
+  if (String(selectedId.value) === conversationId) {
+    nextTick(() => scrollMessagesToBottom())
+  }
+  if (Array.isArray(payload?.participantReceipts)) {
+    patchParticipantReceipts(conv, payload.participantReceipts)
+  }
+}
+
+let socketConnectJoin = () => {}
+
+async function loadConversationList() {
+  listLoading.value = true
+  try {
+    const res = await chatApi.listConversations({ folder: listFolder.value, limit: 20, page: 1 })
+    const data = unwrapChatData(res)
+    const rows = data?.conversations ?? []
+    const my = userStore.user?.id
+    conversations.value = rows.map(r => mapApiConversationToUi(r, my))
+    await enrichAllConversationPeers(conversations.value)
+    applyPeerHintsFromRoute()
+    const qCid = route.query.conversationId
+    if (qCid) {
+      await ensureConversationInList(String(qCid))
+      applyPeerHintsFromRoute()
+      selectedId.value = String(qCid)
+      mobileShowThread.value = true
+      await router.replace({ path: '/chat' })
+    }
+    else if (conversations.value.length && !selectedId.value) {
+      selectedId.value = conversations.value[0].id
+    }
+  }
+  catch (e) {
+    console.error('loadConversationList', e)
+    notification.error({
+      message: 'Messages',
+      description: e.response?.data?.message || 'Could not load conversations.',
+    })
+  }
+  finally {
+    listLoading.value = false
+  }
+}
+
+async function setListFolder(folder) {
+  const f = folder === 'pending' ? 'pending' : 'inbox'
+  if (listFolder.value === f) {
+    return
+  }
+  listFolder.value = f
+  selectedId.value = null
+  mobileShowThread.value = false
+  clearTimeout(readDebounceTimer)
+  readDebounceTimer = null
+  await loadConversationList()
+  if (conversations.value.length) {
+    selectedId.value = conversations.value[0].id
+  }
+}
+
+async function ensureConversationInList(cid) {
+  const c = conversations.value.find(x => x.id === String(cid))
+  if (c) {
+    return c
+  }
+  try {
+    const res = await chatApi.getConversation(cid)
+    const raw = unwrapChatData(res)
+    const apiConv = raw?.conversation ?? raw
+    if (!apiConv?.id) {
+      return null
+    }
+    const ui = mapApiConversationToUi(apiConv, userStore.user?.id)
+    conversations.value.unshift(ui)
+    await enrichAllConversationPeers([ui])
+    return ui
+  }
+  catch (e) {
+    console.error('getConversation', e)
+    return null
+  }
+}
+
+async function loadMessagesForConversation(cid) {
+  const c = conversations.value.find(x => x.id === String(cid))
+  if (!c || c.messagesLoaded) {
+    return
+  }
+  messagesLoading.value = true
+  try {
+    const res = await chatApi.getMessages(cid, { chunkSize: MESSAGES_CHUNK_SIZE })
+    const data = unwrapChatData(res)
+    const rows = Array.isArray(data)
+      ? data
+      : (data?.messages ?? [])
+    const my = userStore.user?.id
+    const mapped = rows.map(m => mapApiMessageToUi(m, my))
+    c.messages = sortMessagesByTimeAsc(mapped)
+    c.messagesNextCursor = nextMessagesCursorFromData(data)
+    mergeParticipantReceiptsFromEnvelope(c, data)
+    c.messagesLoaded = true
+  }
+  catch (e) {
+    console.error('getMessages', e)
+    notification.error({
+      message: 'Messages',
+      description: e.response?.data?.message || 'Could not load messages.',
+    })
+  }
+  finally {
+    messagesLoading.value = false
+  }
+}
+
+async function loadOlderMessages() {
+  const c = active.value
+  const el = messagesScrollEl.value
+  if (!c?.messagesNextCursor || loadingOlderMessages.value) {
+    return
+  }
+  const prevScrollHeight = el?.scrollHeight ?? 0
+  const prevScrollTop = el?.scrollTop ?? 0
+  loadingOlderMessages.value = true
+  try {
+    const res = await chatApi.getMessages(c.id, {
+      chunkSize: MESSAGES_CHUNK_SIZE,
+      cursor: c.messagesNextCursor,
+    })
+    const data = unwrapChatData(res)
+    const rows = Array.isArray(data)
+      ? data
+      : (data?.messages ?? [])
+    const my = userStore.user?.id
+    const older = rows.map(m => mapApiMessageToUi(m, my))
+    const byId = new Map()
+    for (const m of [...older, ...c.messages]) {
+      byId.set(String(m.id), m)
+    }
+    c.messages = sortMessagesByTimeAsc([...byId.values()])
+    c.messagesNextCursor = nextMessagesCursorFromData(data)
+    mergeParticipantReceiptsFromEnvelope(c, data)
+    await nextTick()
+    if (el) {
+      el.scrollTop = el.scrollHeight - prevScrollHeight + prevScrollTop
+    }
+  }
+  catch (e) {
+    console.error('loadOlderMessages', e)
+    notification.error({
+      message: 'Messages',
+      description: e.response?.data?.message || 'Could not load older messages.',
+    })
+  }
+  finally {
+    loadingOlderMessages.value = false
+  }
+}
+
+watch(selectedId, async (id, oldId) => {
+  receiptDetailForMessageId.value = null
+  clearTimeout(readDebounceTimer)
+  readDebounceTimer = null
+
+  if (oldId != null && String(oldId) !== String(id ?? '')) {
+    const prev = conversations.value.find(c => c.id === String(oldId))
+    if (prev?.messages?.length) {
+      const last = prev.messages[prev.messages.length - 1]
+      await markConversationReadUpTo(prev.id, last.id)
+    }
+  }
+
+  scrollMessagesToBottom()
+  if (id) {
+    await loadMessagesForConversation(String(id))
+    emitRoomJoin(id)
+    await nextTick()
+    scrollMessagesToBottom()
+    const c = active.value
+    if (c?.messages?.length) {
+      const last = c.messages[c.messages.length - 1]
+      await markConversationReadUpTo(c.id, last.id)
+    }
+  }
+})
+
+onMounted(async () => {
+  await userStore.fetchUserData()
+  await loadConversationList()
+  connectChatSocket()
+  const s = getChatSocket()
+  if (s) {
+    s.on('message:new', onMessageNew)
+    s.on('conversation:read', onConversationRead)
+    socketConnectJoin = () => {
+      if (selectedId.value) {
+        emitRoomJoin(selectedId.value)
+        nextTick(() => {
+          const cid = selectedId.value
+          if (cid) {
+            scheduleMarkReadForOpenConversation(String(cid))
+          }
+        })
+      }
+    }
+    s.on('connect', socketConnectJoin)
+  }
+  if (selectedId.value) {
+    emitRoomJoin(selectedId.value)
+  }
   requestAnimationFrame(() => {
     requestAnimationFrame(() => scrollMessagesToBottom())
   })
 })
 
+onUnmounted(() => {
+  const s = getChatSocket()
+  if (s) {
+    clearTimeout(readDebounceTimer)
+    readDebounceTimer = null
+    s.off('message:new', onMessageNew)
+    s.off('conversation:read', onConversationRead)
+    s.off('connect', socketConnectJoin)
+  }
+  disconnectChatSocket()
+})
+
 function selectConversation(id) {
   selectedId.value = id
-  const c = conversations.value.find(x => x.id === id)
-  if (c)
-    c.unread = 0
   mobileShowThread.value = true
 }
 
@@ -133,21 +835,41 @@ function backToList() {
   mobileShowThread.value = false
 }
 
-function send() {
+async function send() {
   const text = draft.value.trim()
-  if (!text || !active.value)
+  if (!text || !active.value || sendPending.value) {
     return
-  const msg = {
-    id: `local-${Date.now()}`,
-    text,
-    me: true,
-    at: new Date()
   }
-  active.value.messages.push(msg)
-  active.value.lastMessage = text
-  active.value.updatedAt = msg.at
-  draft.value = ''
-  scrollMessagesToBottom()
+  sendPending.value = true
+  try {
+    const res = await chatApi.postMessage(active.value.id, { text })
+    const data = unwrapChatData(res)
+    const raw = data?.message ?? data
+    const msg = mapApiMessageToUi(raw, myUserId.value)
+    if (!active.value.messages.some(m => String(m.id) === String(msg.id))) {
+      active.value.messages.push(msg)
+    }
+    active.value.lastMessageId = String(msg.id)
+    active.value.lastMessagePreview = {
+      text,
+      senderUserId: myUserId.value != null ? String(myUserId.value) : null,
+    }
+    active.value.lastMessage = text
+    active.value.updatedAt = msg.at
+    mergeParticipantReceiptsFromEnvelope(active.value, data)
+    draft.value = ''
+    scrollMessagesToBottom()
+  }
+  catch (e) {
+    console.error('postMessage', e)
+    notification.error({
+      message: 'Messages',
+      description: e.response?.data?.message || 'Could not send message.',
+    })
+  }
+  finally {
+    sendPending.value = false
+  }
 }
 
 function onComposerKeydown(e) {
@@ -159,15 +881,20 @@ function onComposerKeydown(e) {
 
 function initials(name) {
   const parts = name.trim().split(/\s+/)
-  if (parts.length >= 2)
+  if (parts.length >= 2) {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+  }
   return name.slice(0, 2).toUpperCase()
 }
 
 const fallbackTint = ['bg-[#1877f2]', 'bg-[#166fe5]', 'bg-[#1464d4]']
 
 function fallbackClass(id) {
-  const n = Number.parseInt(id, 10) || 0
+  const s = String(id)
+  let n = 0
+  for (let i = 0; i < s.length; i++) {
+    n += s.charCodeAt(i)
+  }
   return fallbackTint[n % fallbackTint.length]
 }
 </script>
@@ -180,7 +907,6 @@ function fallbackClass(id) {
       <div
         class="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white md:flex-row"
       >
-        <!-- Cột trái: danh sách (Messages / macOS style) -->
         <aside
           class="flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col overflow-hidden border-zinc-200/90 bg-white md:h-full md:w-[300px] lg:w-[320px] md:border-r"
           :class="mobileShowThread ? 'hidden md:flex' : 'flex flex-1 md:flex-none'"
@@ -197,6 +923,32 @@ function fallbackClass(id) {
                 Account
               </NuxtLink>
             </div>
+            <div class="mt-3 flex gap-1 rounded-full bg-zinc-100/90 p-1">
+              <button
+                type="button"
+                class="min-h-9 flex-1 rounded-full px-3 text-[13px] font-semibold transition"
+                :class="
+                  listFolder === 'inbox'
+                    ? 'bg-white text-[#1877f2] shadow-sm'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                "
+                @click="setListFolder('inbox')"
+              >
+                Inbox
+              </button>
+              <button
+                type="button"
+                class="min-h-9 flex-1 rounded-full px-3 text-[13px] font-semibold transition"
+                :class="
+                  listFolder === 'pending'
+                    ? 'bg-white text-[#1877f2] shadow-sm'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                "
+                @click="setListFolder('pending')"
+              >
+                Pending
+              </button>
+            </div>
             <label class="relative mt-4 block">
               <span class="sr-only">Search</span>
               <i
@@ -212,7 +964,13 @@ function fallbackClass(id) {
           </div>
 
           <ul class="min-h-0 flex-1 divide-y divide-zinc-100 overflow-y-auto">
-            <li v-if="filtered.length === 0" class="px-4 py-14 text-center text-[14px] text-zinc-500">
+            <li v-if="listLoading" class="px-4 py-10 text-center text-[14px] text-zinc-500">
+              Loading…
+            </li>
+            <li v-else-if="conversations.length === 0" class="px-4 py-14 text-center text-[14px] text-zinc-500">
+              No conversations yet.
+            </li>
+            <li v-else-if="filtered.length === 0" class="px-4 py-14 text-center text-[14px] text-zinc-500">
               No results.
             </li>
             <li v-for="c in filtered" :key="c.id">
@@ -229,7 +987,7 @@ function fallbackClass(id) {
                 <div class="relative shrink-0">
                   <img
                     v-if="!isAvatarBroken(c.id)"
-                    :src="avatarSrc(c.avatarSeed)"
+                    :src="c.peerAvatarUrl || avatarSrc(c.avatarSeed)"
                     alt=""
                     width="48"
                     height="48"
@@ -245,11 +1003,6 @@ function fallbackClass(id) {
                   >
                     {{ initials(c.name) }}
                   </div>
-                  <span
-                    v-if="c.online"
-                    class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#34c759]"
-                    title="Online"
-                  />
                 </div>
                 <div class="min-w-0 flex-1 py-0.5">
                   <div class="flex items-baseline justify-between gap-2">
@@ -261,147 +1014,161 @@ function fallbackClass(id) {
                   </p>
                 </div>
                 <span
-                  v-if="c.unread > 0"
+                  v-if="c.unreadCount > 0"
                   class="self-center flex h-[22px] min-w-[22px] shrink-0 items-center justify-center rounded-full bg-[#1877f2] px-1.5 text-[11px] font-bold text-white"
-                >{{ c.unread > 9 ? '9+' : c.unread }}</span>
+                >{{ c.unreadCount > 9 ? '9+' : c.unreadCount }}</span>
               </button>
             </li>
           </ul>
         </aside>
 
-        <!-- Cột phải: header + vùng cuộn + composer — bọc 1 flex-col + min-h-0 để thanh nhập luôn dính đáy -->
         <section
           class="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f0f2f5]"
           :class="[!mobileShowThread ? 'hidden md:flex' : 'flex']"
         >
           <template v-if="active">
-            <!-- Khóa bố cục bằng CSS grid (inline) để chắc chắn: header + messages (minmax) + composer -->
             <div
               class="h-full min-h-0 flex-1 overflow-hidden"
               style="display:grid; grid-template-rows:auto minmax(0, 1fr) auto; height: 100%;"
             >
-              <!-- Header một hàng: avatar + tên (hạ nhẹ) + trạng thái | Call + Video bên phải -->
               <div class="border-b border-zinc-200 bg-white">
                 <div class="flex items-center gap-3 px-4 py-3.5 sm:px-5">
-                <button
-                  type="button"
-                  class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 md:hidden"
-                  aria-label="Back"
-                  @click="backToList"
-                >
-                  <i class="fa-solid fa-chevron-left text-[15px]" />
-                </button>
-                <div class="relative h-12 w-12 shrink-0">
-                  <img
-                    v-if="!isAvatarBroken(active.id)"
-                    :src="avatarSrc(active.avatarSeed)"
-                    alt=""
-                    width="48"
-                    height="48"
-                    class="h-12 w-12 rounded-full object-cover ring-1 ring-zinc-200/80"
-                    loading="eager"
-                    decoding="async"
-                    fetchpriority="high"
-                    @error="markAvatarBroken(active.id)"
+                  <button
+                    type="button"
+                    class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 md:hidden"
+                    aria-label="Back"
+                    @click="backToList"
                   >
-                  <div
-                    v-else
-                    class="flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm ring-1 ring-zinc-200/80"
-                    :class="fallbackClass(active.id)"
-                  >
-                    {{ initials(active.name) }}
+                    <i class="fa-solid fa-chevron-left text-[15px]" />
+                  </button>
+                  <div class="relative h-12 w-12 shrink-0">
+                    <img
+                      v-if="!isAvatarBroken(active.id)"
+                      :src="active.peerAvatarUrl || avatarSrc(active.avatarSeed)"
+                      alt=""
+                      width="48"
+                      height="48"
+                      class="h-12 w-12 rounded-full object-cover ring-1 ring-zinc-200/80"
+                      loading="eager"
+                      decoding="async"
+                      fetchpriority="high"
+                      @error="markAvatarBroken(active.id)"
+                    >
+                    <div
+                      v-else
+                      class="flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm ring-1 ring-zinc-200/80"
+                      :class="fallbackClass(active.id)"
+                    >
+                      {{ initials(active.name) }}
+                    </div>
                   </div>
-                </div>
-                <div class="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-                  <p class="truncate text-[17px] font-semibold leading-tight text-zinc-900">
-                    {{ active.name }}
-                  </p>
-                  <p
-                    v-if="active.online"
-                    class="text-[13px] font-normal leading-tight text-[#1877f2]"
-                  >
-                    <span aria-hidden="true">• </span>Active now
-                  </p>
-                  <p v-else class="truncate text-[13px] leading-tight text-zinc-500">
-                    @{{ active.username }}
-                  </p>
-                </div>
-                <div
-                  class="flex shrink-0 items-center gap-0.5 sm:gap-1"
-                  role="toolbar"
-                  aria-label="Call actions"
-                >
-                  <button
-                    type="button"
-                    class="flex h-10 w-10 items-center justify-center rounded-full text-zinc-600 transition hover:bg-zinc-100 hover:text-[#1877f2]"
-                    aria-label="Voice call"
-                  >
-                    <i class="fa-solid fa-phone text-[15px]" />
-                  </button>
-                  <button
-                    type="button"
-                    class="flex h-10 w-10 items-center justify-center rounded-full text-zinc-600 transition hover:bg-zinc-100 hover:text-[#1877f2]"
-                    aria-label="Video call"
-                  >
-                    <i class="fa-solid fa-video text-[14px]" />
-                  </button>
-                </div>
+                  <div class="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+                    <p class="truncate text-[17px] font-semibold leading-tight text-zinc-900">
+                      {{ active.name }}
+                    </p>
+                    <p
+                      v-if="active.online"
+                      class="text-[13px] font-normal leading-tight text-[#1877f2]"
+                    >
+                      <span aria-hidden="true">• </span>Active now
+                    </p>
+                    <p v-else class="truncate text-[13px] leading-tight text-zinc-500">
+                      @{{ active.username }}
+                    </p>
+                  </div>
                 </div>
               </div>
 
               <div
                 ref="messagesScrollEl"
-                class="chat-messages-scroll min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5"
+                class="chat-messages-scroll relative min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5"
+                @scroll.passive="onMessagesScroll"
               >
-              <div class="flex w-full flex-col gap-3">
-                <div
-                  v-for="m in active.messages"
-                  :key="m.id"
-                  class="flex gap-2.5"
-                  :class="m.me ? 'justify-end' : 'justify-start'"
+                <p
+                  v-if="messagesLoading"
+                  class="absolute left-1/2 top-3 z-[1] -translate-x-1/2 rounded-full bg-white/90 px-3 py-1 text-[12px] text-zinc-500 shadow-sm"
                 >
-                  <img
-                    v-if="!m.me && !isAvatarBroken(active.id)"
-                    :src="avatarSrc(active.avatarSeed)"
-                    alt=""
-                    width="28"
-                    height="28"
-                    class="mt-0.5 h-7 w-7 shrink-0 self-end rounded-full object-cover"
-                    loading="lazy"
-                    decoding="async"
-                  >
-                  <div
-                    v-else-if="!m.me"
-                    class="mt-0.5 flex h-7 w-7 shrink-0 self-end items-center justify-center rounded-full text-[10px] font-bold text-white"
-                    :class="fallbackClass(active.id)"
-                  >
-                    {{ initials(active.name).slice(0, 1) }}
-                  </div>
-                  <div
-                    class="max-w-[85%] sm:max-w-[70%]"
-                    :class="m.me ? 'flex flex-col items-end' : ''"
-                  >
-                    <div
-                      class="px-3.5 py-2.5 text-[15px] leading-[1.45] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                      :class="
-                        m.me
-                          ? 'rounded-[18px] rounded-br-[4px] bg-[#1877f2] text-white'
-                          : 'rounded-[18px] rounded-bl-[4px] border border-zinc-200/80 bg-white text-zinc-800'
-                      "
-                    >
-                      <p class="whitespace-pre-wrap break-words">
-                        {{ m.text }}
-                      </p>
-                    </div>
-                    <p
-                      class="mt-1 px-1.5 text-[11px] text-zinc-400"
-                      :class="m.me ? 'text-right' : 'text-left'"
-                    >
-                      {{ timeLabel(m.at) }}
-                    </p>
+                  Loading messages…
+                </p>
+                <div
+                  v-if="loadingOlderMessages"
+                  class="flex shrink-0 flex-col items-center pb-2 pt-0.5"
+                  aria-live="polite"
+                  aria-busy="true"
+                >
+                  <div class="flex items-center gap-2 text-[12px] text-zinc-500">
+                    <i class="fa-solid fa-spinner fa-spin text-[13px] text-[#1877f2]" aria-hidden="true" />
+                    <span>Loading earlier messages…</span>
                   </div>
                 </div>
-              </div>
+                <div class="flex w-full flex-col">
+                  <div
+                    v-for="row in activeMessageRows"
+                    :key="row.msg.id"
+                    class="flex gap-2.5"
+                    :class="[
+                      row.msg.me ? 'justify-end' : 'justify-start',
+                      row.groupFirst && row.index > 0 ? 'mt-3' : row.groupFirst ? '' : 'mt-0.5'
+                    ]"
+                  >
+                    <img
+                      v-if="!row.msg.me && row.groupLast && !isAvatarBroken(active.id)"
+                      :src="active.peerAvatarUrl || avatarSrc(active.avatarSeed)"
+                      alt=""
+                      width="28"
+                      height="28"
+                      class="mt-0.5 h-7 w-7 shrink-0 self-end rounded-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                    >
+                    <div
+                      v-else-if="!row.msg.me && row.groupLast"
+                      class="mt-0.5 flex h-7 w-7 shrink-0 self-end items-center justify-center rounded-full text-[10px] font-bold text-white"
+                      :class="fallbackClass(active.id)"
+                    >
+                      {{ initials(active.name).slice(0, 1) }}
+                    </div>
+                    <div
+                      v-else-if="!row.msg.me"
+                      class="mt-0.5 w-7 shrink-0 self-end"
+                      aria-hidden="true"
+                    />
+                    <div
+                      class="max-w-[85%] sm:max-w-[70%]"
+                      :class="row.msg.me ? 'flex flex-col items-end' : ''"
+                    >
+                      <div
+                        class="px-3.5 py-2.5 text-[15px] leading-[1.45] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+                        :class="
+                          row.msg.me
+                            ? [
+                                row.groupLast ? 'rounded-[18px] rounded-br-[4px]' : 'rounded-[18px]',
+                                'bg-[#1877f2] text-white cursor-pointer active:opacity-95'
+                              ]
+                            : [
+                                row.groupLast ? 'rounded-[18px] rounded-bl-[4px]' : 'rounded-[18px]',
+                                'border border-zinc-200/80 bg-white text-zinc-800'
+                              ]
+                        "
+                        @click.stop="row.msg.me && toggleOutgoingReceiptDetail(row.msg.id)"
+                      >
+                        <p class="whitespace-pre-wrap break-words">
+                          {{ row.msg.text }}
+                        </p>
+                      </div>
+                      <p
+                        v-if="row.showMeta"
+                        class="mt-1 flex flex-wrap items-center gap-x-1.5 px-1.5 text-[11px] text-zinc-400"
+                        :class="row.msg.me ? 'justify-end text-right' : 'text-left'"
+                      >
+                        <span>{{ timeLabel(row.msg.at) }}</span>
+                        <span
+                          v-if="row.msg.me && shouldShowOutgoingReceipt(active.messages, row.msg.id, active) && outgoingMessageReceiptLabel(active, row.msg.id)"
+                        >· {{ outgoingMessageReceiptLabel(active, row.msg.id) }}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div class="border-t border-zinc-200 bg-white px-4 py-3 sm:px-5">
@@ -427,7 +1194,7 @@ function fallbackClass(id) {
                     <button
                       type="submit"
                       class="composer-send flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-[14px] text-white shadow-sm transition hover:bg-[#166fe5] active:scale-[0.96] disabled:cursor-not-allowed disabled:bg-[#e4e6eb] disabled:text-[#bcc0c4] disabled:shadow-none"
-                      :disabled="!draft.trim()"
+                      :disabled="!draft.trim() || sendPending"
                       aria-label="Send"
                     >
                       <i class="fa-solid fa-arrow-up leading-none" />
@@ -456,7 +1223,6 @@ function fallbackClass(id) {
 </template>
 
 <style scoped>
-/* Block CSS thật (không để trống) — tránh @tailwindcss/vite coi <script> là CSS. */
 .chat-page {
   isolation: isolate;
 }

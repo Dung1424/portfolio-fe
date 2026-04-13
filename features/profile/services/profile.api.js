@@ -5,6 +5,9 @@ export const profileService = {
   fetchByUsername(username, config = {}) {
     return axios.get(getUrlList().getUserByUserName(username), config)
   },
+  fetchByUserId(userId, config = {}) {
+    return axios.get(getUrlList().getUserById(userId), config)
+  },
   fetchTotalLikes(username, config = {}) {
     return axios.get(getUrlList().getTotalLikes(username), config)
   },

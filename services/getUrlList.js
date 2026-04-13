@@ -71,6 +71,10 @@ export function getUrlList() {
   const raw = import.meta.env?.NUXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000'
   const base = String(raw).replace(/\/$/, '')
   const baseUrl = `${base}/api/v1`
+  /** Chat service (Node). `NUXT_PUBLIC_CHAT_API` ví dụ `http://localhost:3010` — REST dùng `/api/v1`, Socket.IO dùng gốc host (không path). */
+  const chatRaw = import.meta.env?.NUXT_PUBLIC_CHAT_API || 'http://localhost:3010'
+  const chatServerOrigin = String(chatRaw).replace(/\/$/, '')
+  const chatApi = `${chatServerOrigin}/api/v1`
   const adminPaths = getAdminPaths()
   const enc = encodeURIComponent
   return {
@@ -133,6 +137,8 @@ export function getUrlList() {
     getCategories: `${baseUrl}/Category/List`,
     getTags: `${baseUrl}/Tag/List`,
     getUserByUserName: username => `${baseUrl}/User/DetailByUsername/${enc(username)}`,
+    /** UUID / id user — chat peer, v.v. */
+    getUserById: userId => `${baseUrl}/User/DetailById/${enc(String(userId))}`,
     getPhotosByUserName: username => `${baseUrl}/Photo/ListByUsername/${enc(username)}`,
     getGalleriesByUserName: username => `${baseUrl}/Gallery/ListByUsername/${enc(username)}`,
     getGalleryDetailUser: galleries_code => `${baseUrl}/Gallery/DetailByCode/${galleries_code}`,
@@ -159,6 +165,25 @@ export function getUrlList() {
     getLatestBlogs: `${baseUrl}/Blog/ListLatest`,
     getOlderBlogs: `${baseUrl}/Blog/ListOlder`,
     getBlogDetails: slug => `${baseUrl}/Blog/Detail/${enc(slug)}`,
+
+    // chat (Node + Mongo) — Bearer JWT; GET /health không cần Bearer
+    /** Gốc `http://host:port` — socket.io-client kết nối tới đây */
+    chatServerOrigin,
+    chatApiRoot: chatApi,
+    chatHealth: `${chatApi}/health`,
+    /** Query: page, limit, folder (all | inbox | pending) */
+    chatConversations: `${chatApi}/conversations`,
+    /** Body: { otherUserId } — profile / nút Chat */
+    chatConversationEnsure: `${chatApi}/conversations/ensure`,
+    /** Body direct: { type: "direct", peerUserId } hoặc group: { type: "group", participantIds[] } */
+    chatConversationCreate: `${chatApi}/conversations`,
+    chatConversation: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}`,
+    /** Query: limit, before (ObjectId) */
+    chatConversationMessages: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/messages`,
+    chatConversationRead: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/read`,
 
     /** Base URL `.../api/admin` — alias của `getAdminPaths().root` */
     adminBase: adminPaths.root,
