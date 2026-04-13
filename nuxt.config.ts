@@ -79,6 +79,7 @@ export default defineNuxtConfig({
     '/addPhotos': { ssr: false },
     '/changePassword': { ssr: false },
     '/like': { ssr: false },
+    '/chat': { ssr: false },
     '/listUserBlock': { ssr: false },
     '/galleryDetails/**': { ssr: false },
     '/admin': { ssr: false },

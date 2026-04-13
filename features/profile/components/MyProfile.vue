@@ -66,6 +66,17 @@
                             <i class="fa-solid fa-pencil" />
                         </button>
                         <button
+                            v-if="!isMyProfile && isLoggedIn && !isBlocked"
+                            type="button"
+                            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-wait disabled:opacity-60"
+                            title="Messages"
+                            aria-label="Send message"
+                            :disabled="chatOpening"
+                            @click="openChatWithUser"
+                        >
+                            <i class="fa-regular fa-paper-plane text-[19px]" />
+                        </button>
+                        <button
                             type="button"
                             class="rounded-lg p-1.5 transition hover:bg-zinc-100 hover:text-zinc-950"
                             aria-label="Copy profile link"
@@ -336,6 +347,7 @@
 
 <script>
 import { profileService } from '~/features/profile/services/profile.api.js'
+import { chatApi, unwrapChatData } from '~/features/chat/services/chat.api.js'
 import UpdateProfileModal from '~/features/account/components/profile/UpdateProfileModal.vue'
 import ProfilePhotoGrid from '~/features/profile/components/ProfilePhotoGrid.vue'
 import ProfileGalleryGrid from '~/features/profile/components/ProfileGalleryGrid.vue'
@@ -371,6 +383,8 @@ export default {
             profileUnavailable: false,
             followersPopupVisible: false,
             followingPopupVisible: false,
+            /** POST /conversations/ensure khi bấm icon tin nhắn */
+            chatOpening: false,
         };
     },
     computed: {
@@ -654,6 +668,53 @@ export default {
         },
         toggleBio() {
             this.isBioExpanded = !this.isBioExpanded;
+        },
+        async openChatWithUser() {
+            if (!await this.checkLogin()) {
+                return;
+            }
+            if (this.chatOpening) {
+                return;
+            }
+            const otherId = this.user?.id;
+            if (otherId == null || otherId === undefined) {
+                return;
+            }
+            this.chatOpening = true;
+            try {
+                const res = await chatApi.ensure(String(otherId));
+                const data = unwrapChatData(res) || {};
+                const conv = data.conversation ?? data;
+                const cid = conv?.id;
+                if (!cid) {
+                    notification.error({
+                        message: 'Chat',
+                        description: 'Could not start conversation.',
+                        placement: 'topRight',
+                    });
+                    return;
+                }
+                const peerName = this.user.name || this.user.username || 'User';
+                const peerUsername = this.user.username || '';
+                await this.$router.push({
+                    name: 'Chat',
+                    query: {
+                        conversationId: String(cid),
+                        peerName,
+                        peerUsername,
+                    },
+                });
+            } catch (error) {
+                console.error('openChatWithUser', error);
+                const msg = error.response?.data?.message || error.response?.data?.error || 'Failed to open messages.';
+                notification.error({
+                    message: 'Chat',
+                    description: typeof msg === 'string' ? msg : 'Failed to open messages.',
+                    placement: 'topRight',
+                });
+            } finally {
+                this.chatOpening = false;
+            }
         },
         copyProfileLink() {
             const url = window.location.href;
