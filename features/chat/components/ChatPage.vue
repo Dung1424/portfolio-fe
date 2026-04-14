@@ -1,5 +1,10 @@
 <script setup>
 import { picsumAvatarUrl } from '~/utils/picsumAvatar.js'
+import {
+  getChatNotifyPublicSrc,
+  playChatNotificationSound,
+  unlockChatNotificationAudio,
+} from '~/utils/chatMessageSound.js'
 import { useUserStore } from '~/stores/userStore.js'
 import { useResolvePublicMediaUrl } from '~/composables/useMediaBase'
 import { notification } from 'ant-design-vue'
@@ -705,14 +710,53 @@ function onConversationRead(payload) {
   scheduleRefreshFolderUnreadTotals()
 }
 
+const notifyAudioRef = ref(null)
+const notifySoundSrc = computed(() => getChatNotifyPublicSrc())
+
+function unlockNotifyAudio() {
+  unlockChatNotificationAudio(notifyAudioRef.value)
+}
+
+/** Selected conversation + thread visible (on small screens, not list-only). */
+function isViewingConversationThread(conversationId) {
+  if (String(selectedId.value ?? '') !== String(conversationId)) {
+    return false
+  }
+  if (!import.meta.client || typeof window === 'undefined') {
+    return true
+  }
+  if (window.matchMedia('(min-width: 768px)').matches) {
+    return true
+  }
+  return mobileShowThread.value === true
+}
+
+/**
+ * Incoming from someone else: play only when this conversation thread is not open.
+ */
+function maybePlayIncomingNotify(isIncoming, conversationId) {
+  if (!isIncoming) {
+    return
+  }
+  if (isViewingConversationThread(conversationId)) {
+    return
+  }
+  playChatNotificationSound(notifyAudioRef.value)
+}
+
 function onMessageNew(payload) {
   const conversationId = payload?.conversationId != null ? String(payload.conversationId) : ''
   const raw = payload?.message
   if (!conversationId || !raw) {
     return
   }
+  const my = myUserId.value
+  const isIncoming
+    = my != null && String(raw?.senderUserId ?? '') !== String(my)
+
   const conv = conversations.value.find(c => c.id === conversationId)
   if (!conv) {
+    maybePlayIncomingNotify(isIncoming, conversationId)
     scheduleRefreshFolderUnreadTotals()
     return
   }
@@ -723,9 +767,9 @@ function onMessageNew(payload) {
   const ui = mapApiMessageToUi(raw, myUserId.value)
   conv.messages.push(ui)
   bumpConversationRowFromMessage(conv, raw, ui)
+  maybePlayIncomingNotify(isIncoming, conversationId)
 
   const bump = payload?.unreadBumpForUserIds
-  const my = myUserId.value
   const inBump = Array.isArray(bump) && my != null && bump.some(x => String(x) === String(my))
   const socketUnread
     = payload?.unreadCount ?? payload?.conversationUnreadCount ?? payload?.conversation?.unreadCount
@@ -929,7 +973,27 @@ watch(selectedId, async (id, oldId) => {
   }
 })
 
+/** @type {(() => void) | null} */
+let removeChatSoundUnlockListeners = null
+
 onMounted(async () => {
+  if (import.meta.client) {
+       const unlock = () => {
+      unlockNotifyAudio()
+      window.removeEventListener('pointerdown', unlock, true)
+      window.removeEventListener('keydown', unlock, true)
+      window.removeEventListener('touchstart', unlock, true)
+      removeChatSoundUnlockListeners = null
+    }
+    removeChatSoundUnlockListeners = () => {
+      window.removeEventListener('pointerdown', unlock, true)
+      window.removeEventListener('keydown', unlock, true)
+      window.removeEventListener('touchstart', unlock, true)
+    }
+    window.addEventListener('pointerdown', unlock, true)
+    window.addEventListener('keydown', unlock, true)
+    window.addEventListener('touchstart', unlock, { capture: true, passive: true })
+  }
   await userStore.fetchUserData()
   await loadConversationList()
   connectChatSocket()
@@ -961,6 +1025,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  removeChatSoundUnlockListeners?.()
+  removeChatSoundUnlockListeners = null
   clearPendingChatImage()
   clearTimeout(folderUnreadDebounceTimer)
   folderUnreadDebounceTimer = null
@@ -978,6 +1044,7 @@ onUnmounted(() => {
 })
 
 function selectConversation(id) {
+  unlockNotifyAudio()
   selectedId.value = id
   mobileShowThread.value = true
 }
@@ -1056,6 +1123,7 @@ async function send() {
   if ((!text && !pending) || !active.value || sendPending.value) {
     return
   }
+  unlockNotifyAudio()
   sendPending.value = true
   try {
     const body = {}
@@ -1128,6 +1196,14 @@ function fallbackClass(id) {
   <div
     class="chat-page flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-white font-sans text-[15px] leading-relaxed text-zinc-900 antialiased [-webkit-font-smoothing:antialiased]"
   >
+    <audio
+      ref="notifyAudioRef"
+      preload="auto"
+      playsinline
+      class="pointer-events-none fixed left-0 top-0 h-px w-px opacity-0"
+      :src="notifySoundSrc"
+      aria-hidden="true"
+    />
     <div class="flex h-full min-h-0 w-full flex-1 flex-col">
       <div
         class="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white md:flex-row"
