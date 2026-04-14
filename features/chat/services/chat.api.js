@@ -80,6 +80,15 @@ export const chatApi = {
     )
   },
 
+  /** Body `{ contentType, fileName? }` — presigned PUT to MinIO */
+  presignChatImageUpload(conversationId, body) {
+    return axios.post(
+      getUrlList().chatUploadPresign(conversationId),
+      body,
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
   /** Body `{ userIds: string[] }` — tối đa 50 */
   presenceQuery(userIds) {
     const ids = Array.isArray(userIds) ? userIds.map(x => String(x)) : []
