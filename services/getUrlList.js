@@ -173,6 +173,7 @@ export function getUrlList() {
     chatHealth: `${chatApi}/health`,
     /** Query: page, limit, folder (all | inbox | pending) */
     chatConversations: `${chatApi}/conversations`,
+    chatConversationsUnreadSummary: `${chatApi}/conversations/unread-summary`,
     /** Body: { otherUserId } — profile / nút Chat */
     chatConversationEnsure: `${chatApi}/conversations/ensure`,
     /** Body direct: { type: "direct", peerUserId } hoặc group: { type: "group", participantIds[] } */
@@ -184,6 +185,7 @@ export function getUrlList() {
       `${chatApi}/conversations/${enc(String(conversationId))}/messages`,
     chatConversationRead: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/read`,
+    chatPresenceQuery: `${chatApi}/presence/query`,
 
     /** Base URL `.../api/admin` — alias của `getAdminPaths().root` */
     adminBase: adminPaths.root,

@@ -10,6 +10,8 @@ import {
   disconnectChatSocket,
   getChatSocket,
   emitRoomJoin,
+  startPresenceHeartbeat,
+  stopPresenceHeartbeat,
 } from '~/services/chatSocket.js'
 
 const route = useRoute()
@@ -238,6 +240,7 @@ function mapApiConversationToUi(apiConv, myUserIdVal) {
     updatedAt: t ? new Date(t) : new Date(),
     unreadCount: typeof apiConv.unreadCount === 'number' ? apiConv.unreadCount : 0,
     online: false,
+    peerLastSeenAt: null,
     messages: [],
     messagesLoaded: false,
     messagesNextCursor: null,
@@ -310,6 +313,81 @@ async function enrichAllConversationPeers(list) {
   )
 }
 
+async function applyPresenceToConversations(list) {
+  const ids = [...new Set(list.map(c => c.peerUserId).filter(Boolean))]
+  if (!ids.length) {
+    return
+  }
+  try {
+    const res = await chatApi.presenceQuery(ids)
+    const data = unwrapChatData(res)
+    const users = data?.users ?? {}
+    for (const c of list) {
+      const p = c.peerUserId
+      if (!p) {
+        continue
+      }
+      const row = users[String(p)]
+      if (row && typeof row.online === 'boolean') {
+        c.online = row.online
+      }
+      if (row && row.lastSeenAt != null && Number.isFinite(Number(row.lastSeenAt))) {
+        c.peerLastSeenAt = Number(row.lastSeenAt)
+      }
+      else if (row?.online === true) {
+        c.peerLastSeenAt = null
+      }
+    }
+  }
+  catch (e) {
+    console.error('presenceQuery', e)
+  }
+}
+
+function peerLastSeenSubtitle(conv) {
+  if (!conv || conv.online) {
+    return ''
+  }
+  const ms = conv.peerLastSeenAt
+  if (ms == null || !Number.isFinite(ms)) {
+    return ''
+  }
+  const diff = Date.now() - ms
+  if (diff < 60_000) {
+    return 'Just offline'
+  }
+  if (diff < 3600_000) {
+    const m = Math.max(1, Math.floor(diff / 60_000))
+    return `${m} min ago`
+  }
+  if (diff < 86_400_000) {
+    const h = Math.max(1, Math.floor(diff / 3600_000))
+    return `${h} h ago`
+  }
+  const d = Math.floor(diff / 86_400_000)
+  return d < 2 ? 'Yesterday' : `${d} days ago`
+}
+
+function onPresenceUpdate(payload) {
+  const uid = payload?.userId != null ? String(payload.userId) : ''
+  if (!uid) {
+    return
+  }
+  const online = Boolean(payload?.online)
+  const ls = payload?.lastSeenAt
+  for (const c of conversations.value) {
+    if (String(c.peerUserId) === uid) {
+      c.online = online
+      if (online) {
+        c.peerLastSeenAt = null
+      }
+      else if (ls != null && Number.isFinite(Number(ls))) {
+        c.peerLastSeenAt = Number(ls)
+      }
+    }
+  }
+}
+
 function applyPeerHintsFromRoute() {
   const cid = route.query.conversationId
   const peerName = route.query.peerName
@@ -371,6 +449,9 @@ function nextMessagesCursorFromData(data) {
 
 const conversations = ref([])
 const listFolder = ref('inbox')
+const inboxUnreadTotal = ref(0)
+const pendingUnreadTotal = ref(0)
+let folderUnreadDebounceTimer = null
 const listLoading = ref(false)
 const messagesLoading = ref(false)
 const loadingOlderMessages = ref(false)
@@ -478,6 +559,7 @@ async function markConversationReadUpTo(conversationId, upToMessageId) {
     }
     mergeParticipantReceiptsFromEnvelope(conv, data)
     lastReadWatermarkByConvId.set(conv.id, mid)
+    scheduleRefreshFolderUnreadTotals()
   }
   catch (e) {
     console.error('postRead', e)
@@ -531,6 +613,32 @@ function scrollMessagesToBottom() {
 
 const myUserId = computed(() => userStore.user?.id ?? null)
 
+async function refreshFolderUnreadTotals() {
+  try {
+    const res = await chatApi.folderUnreadSummary()
+    const data = unwrapChatData(res)
+    const inbox = data?.inbox?.unreadTotal
+    const pending = data?.pending?.unreadTotal
+    if (typeof inbox === 'number') {
+      inboxUnreadTotal.value = Math.max(0, inbox)
+    }
+    if (typeof pending === 'number') {
+      pendingUnreadTotal.value = Math.max(0, pending)
+    }
+  }
+  catch (e) {
+    console.error('folderUnreadSummary', e)
+  }
+}
+
+function scheduleRefreshFolderUnreadTotals() {
+  clearTimeout(folderUnreadDebounceTimer)
+  folderUnreadDebounceTimer = setTimeout(() => {
+    folderUnreadDebounceTimer = null
+    refreshFolderUnreadTotals()
+  }, 320)
+}
+
 function onConversationRead(payload) {
   const cid = payload?.conversationId != null ? String(payload.conversationId) : ''
   if (!cid) {
@@ -563,6 +671,7 @@ function onConversationRead(payload) {
       conv.unreadCount = n
     }
   }
+  scheduleRefreshFolderUnreadTotals()
 }
 
 function onMessageNew(payload) {
@@ -573,6 +682,7 @@ function onMessageNew(payload) {
   }
   const conv = conversations.value.find(c => c.id === conversationId)
   if (!conv) {
+    scheduleRefreshFolderUnreadTotals()
     return
   }
   const mid = String(raw.id ?? '')
@@ -606,6 +716,7 @@ function onMessageNew(payload) {
   if (Array.isArray(payload?.participantReceipts)) {
     patchParticipantReceipts(conv, payload.participantReceipts)
   }
+  scheduleRefreshFolderUnreadTotals()
 }
 
 let socketConnectJoin = () => {}
@@ -619,6 +730,7 @@ async function loadConversationList() {
     const my = userStore.user?.id
     conversations.value = rows.map(r => mapApiConversationToUi(r, my))
     await enrichAllConversationPeers(conversations.value)
+    await applyPresenceToConversations(conversations.value)
     applyPeerHintsFromRoute()
     const qCid = route.query.conversationId
     if (qCid) {
@@ -628,8 +740,9 @@ async function loadConversationList() {
       mobileShowThread.value = true
       await router.replace({ path: '/chat' })
     }
-    else if (conversations.value.length && !selectedId.value) {
-      selectedId.value = conversations.value[0].id
+    else if (selectedId.value && !conversations.value.some(c => c.id === String(selectedId.value))) {
+      selectedId.value = null
+      mobileShowThread.value = false
     }
   }
   catch (e) {
@@ -641,6 +754,7 @@ async function loadConversationList() {
   }
   finally {
     listLoading.value = false
+    await refreshFolderUnreadTotals()
   }
 }
 
@@ -655,9 +769,6 @@ async function setListFolder(folder) {
   clearTimeout(readDebounceTimer)
   readDebounceTimer = null
   await loadConversationList()
-  if (conversations.value.length) {
-    selectedId.value = conversations.value[0].id
-  }
 }
 
 async function ensureConversationInList(cid) {
@@ -675,6 +786,7 @@ async function ensureConversationInList(cid) {
     const ui = mapApiConversationToUi(apiConv, userStore.user?.id)
     conversations.value.unshift(ui)
     await enrichAllConversationPeers([ui])
+    await applyPresenceToConversations([ui])
     return ui
   }
   catch (e) {
@@ -789,10 +901,12 @@ onMounted(async () => {
   await userStore.fetchUserData()
   await loadConversationList()
   connectChatSocket()
+  startPresenceHeartbeat()
   const s = getChatSocket()
   if (s) {
     s.on('message:new', onMessageNew)
     s.on('conversation:read', onConversationRead)
+    s.on('presence:update', onPresenceUpdate)
     socketConnectJoin = () => {
       if (selectedId.value) {
         emitRoomJoin(selectedId.value)
@@ -815,12 +929,16 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  clearTimeout(folderUnreadDebounceTimer)
+  folderUnreadDebounceTimer = null
+  stopPresenceHeartbeat()
   const s = getChatSocket()
   if (s) {
     clearTimeout(readDebounceTimer)
     readDebounceTimer = null
     s.off('message:new', onMessageNew)
     s.off('conversation:read', onConversationRead)
+    s.off('presence:update', onPresenceUpdate)
     s.off('connect', socketConnectJoin)
   }
   disconnectChatSocket()
@@ -926,7 +1044,7 @@ function fallbackClass(id) {
             <div class="mt-3 flex gap-1 rounded-full bg-zinc-100/90 p-1">
               <button
                 type="button"
-                class="min-h-9 flex-1 rounded-full px-3 text-[13px] font-semibold transition"
+                class="min-h-9 flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-[13px] font-semibold transition"
                 :class="
                   listFolder === 'inbox'
                     ? 'bg-white text-[#1877f2] shadow-sm'
@@ -934,11 +1052,16 @@ function fallbackClass(id) {
                 "
                 @click="setListFolder('inbox')"
               >
-                Inbox
+                <span>Inbox</span>
+                <span
+                  v-if="inboxUnreadTotal > 0"
+                  class="flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none text-white"
+                  :class="listFolder === 'inbox' ? 'bg-[#1877f2]' : 'bg-zinc-500'"
+                >{{ inboxUnreadTotal > 99 ? '99+' : inboxUnreadTotal }}</span>
               </button>
               <button
                 type="button"
-                class="min-h-9 flex-1 rounded-full px-3 text-[13px] font-semibold transition"
+                class="min-h-9 flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-[13px] font-semibold transition"
                 :class="
                   listFolder === 'pending'
                     ? 'bg-white text-[#1877f2] shadow-sm'
@@ -946,7 +1069,12 @@ function fallbackClass(id) {
                 "
                 @click="setListFolder('pending')"
               >
-                Pending
+                <span>Pending</span>
+                <span
+                  v-if="pendingUnreadTotal > 0"
+                  class="flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none text-white"
+                  :class="listFolder === 'pending' ? 'bg-[#1877f2]' : 'bg-zinc-500'"
+                >{{ pendingUnreadTotal > 99 ? '99+' : pendingUnreadTotal }}</span>
               </button>
             </div>
             <label class="relative mt-4 block">
@@ -1003,6 +1131,11 @@ function fallbackClass(id) {
                   >
                     {{ initials(c.name) }}
                   </div>
+                  <span
+                    v-if="c.online"
+                    class="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white"
+                    aria-hidden="true"
+                  />
                 </div>
                 <div class="min-w-0 flex-1 py-0.5">
                   <div class="flex items-baseline justify-between gap-2">
@@ -1071,6 +1204,12 @@ function fallbackClass(id) {
                       class="text-[13px] font-normal leading-tight text-[#1877f2]"
                     >
                       <span aria-hidden="true">• </span>Active now
+                    </p>
+                    <p
+                      v-else-if="peerLastSeenSubtitle(active)"
+                      class="truncate text-[13px] leading-tight text-zinc-500"
+                    >
+                      {{ peerLastSeenSubtitle(active) }}
                     </p>
                     <p v-else class="truncate text-[13px] leading-tight text-zinc-500">
                       @{{ active.username }}
