@@ -418,13 +418,27 @@ function mapApiMessageToUi(raw, myId) {
     : raw?.updatedAt
       ? new Date(raw.updatedAt)
       : new Date()
+  let imageUrl = ''
+  if (Array.isArray(raw?.attachments)) {
+    for (const a of raw.attachments) {
+      const u = typeof a.url === 'string' ? a.url.trim() : ''
+      if (u && (a.kind === 'image' || a.objectKey)) {
+        imageUrl = u
+        break
+      }
+    }
+  }
   let text = raw?.text ?? ''
-  if (!text && Array.isArray(raw?.attachments) && raw.attachments.length > 0) {
+  if (imageUrl && (!text || text === '[Attachment]' || text === '[đính kèm]')) {
+    text = ''
+  }
+  else if (!text && Array.isArray(raw?.attachments) && raw.attachments.length > 0 && !imageUrl) {
     text = '[Attachment]'
   }
   return {
     id: String(raw?.id ?? `msg-${Date.now()}`),
     text,
+    imageUrl,
     me,
     at,
   }
@@ -459,6 +473,9 @@ const sendPending = ref(false)
 const query = ref('')
 const selectedId = ref(null)
 const draft = ref('')
+/** After presign + PUT to MinIO; user taps Send: { objectKey, previewUrl } */
+const pendingChatImage = ref(null)
+const chatImageInputRef = ref(null)
 const mobileShowThread = ref(false)
 const brokenAvatarIds = ref(new Set())
 
@@ -524,15 +541,29 @@ function isMessagesScrollNearBottom(el) {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX
 }
 
+function rowPreviewFromMessageUi(raw, ui) {
+  const t = typeof ui.text === 'string' ? ui.text.trim() : ''
+  if (t) {
+    return t
+  }
+  const hasImg = Boolean(ui.imageUrl)
+    || (Array.isArray(raw?.attachments)
+      && raw.attachments.some(
+        a => a && (a.kind === 'image' || (typeof a.objectKey === 'string' && a.objectKey)),
+      ))
+  return hasImg ? '[đính kèm]' : ''
+}
+
 function bumpConversationRowFromMessage(conv, raw, ui) {
-  conv.lastMessage = ui.text
+  const preview = rowPreviewFromMessageUi(raw, ui)
+  conv.lastMessage = preview
   conv.updatedAt = ui.at
   const rid = raw?.id
   if (rid != null) {
     conv.lastMessageId = String(rid)
   }
   conv.lastMessagePreview = {
-    text: ui.text,
+    text: preview,
     senderUserId: raw?.senderUserId != null ? String(raw.senderUserId) : null,
   }
 }
@@ -872,6 +903,7 @@ async function loadOlderMessages() {
 
 watch(selectedId, async (id, oldId) => {
   receiptDetailForMessageId.value = null
+  clearPendingChatImage()
   clearTimeout(readDebounceTimer)
   readDebounceTimer = null
 
@@ -929,6 +961,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  clearPendingChatImage()
   clearTimeout(folderUnreadDebounceTimer)
   folderUnreadDebounceTimer = null
   stopPresenceHeartbeat()
@@ -953,14 +986,86 @@ function backToList() {
   mobileShowThread.value = false
 }
 
+function clearPendingChatImage() {
+  const p = pendingChatImage.value
+  if (p?.previewUrl && String(p.previewUrl).startsWith('blob:')) {
+    URL.revokeObjectURL(p.previewUrl)
+  }
+  pendingChatImage.value = null
+}
+
+function openChatImagePicker() {
+  chatImageInputRef.value?.click()
+}
+
+async function onChatImageSelected(ev) {
+  const input = ev.target
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !active.value) {
+    return
+  }
+  const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+  if (!allowed.includes(file.type)) {
+    notification.error({
+      message: 'Photo',
+      description: 'Chọn JPEG, PNG, GIF hoặc WebP.',
+    })
+    return
+  }
+  try {
+    const res = await chatApi.presignChatImageUpload(active.value.id, {
+      contentType: file.type,
+      fileName: file.name,
+    })
+    const presign = unwrapChatData(res)
+    const put = await fetch(presign.uploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type },
+    })
+    if (!put.ok) {
+      throw new Error(`Upload ${put.status}`)
+    }
+    clearPendingChatImage()
+    pendingChatImage.value = {
+      objectKey: presign.objectKey,
+      previewUrl: URL.createObjectURL(file),
+    }
+  }
+  catch (e) {
+    console.error('chat image upload', e)
+    const apiMsg = e?.response?.data?.message
+    const apiErr = Array.isArray(e?.response?.data?.errors)
+      ? e.response.data.errors[0]
+      : null
+    notification.error({
+      message: 'Photo',
+      description:
+        apiMsg
+        || apiErr
+        || e?.message
+        || 'Could not upload image (MinIO / CORS / network).',
+    })
+  }
+}
+
 async function send() {
   const text = draft.value.trim()
-  if (!text || !active.value || sendPending.value) {
+  const pending = pendingChatImage.value
+  if ((!text && !pending) || !active.value || sendPending.value) {
     return
   }
   sendPending.value = true
   try {
-    const res = await chatApi.postMessage(active.value.id, { text })
+    const body = {}
+    if (text) {
+      body.text = text
+    }
+    if (pending) {
+      body.attachments = [{ kind: 'image', objectKey: pending.objectKey }]
+    }
+    const res = await chatApi.postMessage(active.value.id, body)
     const data = unwrapChatData(res)
     const raw = data?.message ?? data
     const msg = mapApiMessageToUi(raw, myUserId.value)
@@ -968,14 +1073,16 @@ async function send() {
       active.value.messages.push(msg)
     }
     active.value.lastMessageId = String(msg.id)
+    const previewText = text || (pending ? '[đính kèm]' : '')
     active.value.lastMessagePreview = {
-      text,
+      text: previewText,
       senderUserId: myUserId.value != null ? String(myUserId.value) : null,
     }
-    active.value.lastMessage = text
+    active.value.lastMessage = previewText
     active.value.updatedAt = msg.at
     mergeParticipantReceiptsFromEnvelope(active.value, data)
     draft.value = ''
+    clearPendingChatImage()
     scrollMessagesToBottom()
   }
   catch (e) {
@@ -1291,7 +1398,19 @@ function fallbackClass(id) {
                         "
                         @click.stop="row.msg.me && toggleOutgoingReceiptDetail(row.msg.id)"
                       >
-                        <p class="whitespace-pre-wrap break-words">
+                        <img
+                          v-if="row.msg.imageUrl"
+                          :src="row.msg.imageUrl"
+                          alt=""
+                          class="max-h-64 w-full max-w-[280px] rounded-lg object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        >
+                        <p
+                          v-if="row.msg.text"
+                          class="whitespace-pre-wrap break-words"
+                          :class="row.msg.imageUrl ? 'mt-2' : ''"
+                        >
                           {{ row.msg.text }}
                         </p>
                       </div>
@@ -1311,14 +1430,40 @@ function fallbackClass(id) {
               </div>
 
               <div class="border-t border-zinc-200 bg-white px-4 py-3 sm:px-5">
+                <input
+                  ref="chatImageInputRef"
+                  type="file"
+                  class="hidden"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  @change="onChatImageSelected"
+                >
                 <form @submit.prevent="send">
+                  <div
+                    v-if="pendingChatImage"
+                    class="mb-2 flex items-center gap-2 rounded-xl border border-zinc-200/90 bg-zinc-50 p-2"
+                  >
+                    <img
+                      :src="pendingChatImage.previewUrl"
+                      alt=""
+                      class="h-14 w-14 rounded-lg object-cover"
+                    >
+                    <span class="flex-1 text-[13px] text-zinc-600">Ready to send</span>
+                    <button
+                      type="button"
+                      class="rounded-full px-2 py-1 text-[12px] text-zinc-500 hover:bg-zinc-200/80"
+                      @click="clearPendingChatImage"
+                    >
+                      Remove
+                    </button>
+                  </div>
                   <div
                     class="composer-bar flex min-h-[48px] items-center gap-1.5 rounded-full border border-zinc-200/90 bg-[#f0f2f5] py-1.5 pl-2.5 pr-2 transition focus-within:border-[#1877f2]/35 focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(24,119,242,0.12)]"
                   >
                     <button
                       type="button"
                       class="composer-icon-btn flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/80 hover:text-[#1877f2]"
-                      aria-label="Attach"
+                      aria-label="Attach photo"
+                      @click="openChatImagePicker"
                     >
                       <i class="fa-solid fa-plus text-[18px] leading-none" />
                     </button>
@@ -1333,7 +1478,7 @@ function fallbackClass(id) {
                     <button
                       type="submit"
                       class="composer-send flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-[14px] text-white shadow-sm transition hover:bg-[#166fe5] active:scale-[0.96] disabled:cursor-not-allowed disabled:bg-[#e4e6eb] disabled:text-[#bcc0c4] disabled:shadow-none"
-                      :disabled="!draft.trim() || sendPending"
+                      :disabled="(!draft.trim() && !pendingChatImage) || sendPending"
                       aria-label="Send"
                     >
                       <i class="fa-solid fa-arrow-up leading-none" />

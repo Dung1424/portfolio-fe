@@ -186,6 +186,8 @@ export function getUrlList() {
     chatConversationRead: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/read`,
     chatPresenceQuery: `${chatApi}/presence/query`,
+    chatUploadPresign: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/uploads/presign`,
 
     /** Base URL `.../api/admin` — alias của `getAdminPaths().root` */
     adminBase: adminPaths.root,
