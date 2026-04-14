@@ -44,6 +44,10 @@ export const chatApi = {
     })
   },
 
+  folderUnreadSummary() {
+    return axios.get(getUrlList().chatConversationsUnreadSummary, authConfig())
+  },
+
   getConversation(conversationId) {
     return axios.get(getUrlList().chatConversation(conversationId), authConfig())
   },
@@ -72,6 +76,16 @@ export const chatApi = {
     return axios.post(
       getUrlList().chatConversationRead(conversationId),
       body,
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  /** Body `{ userIds: string[] }` — tối đa 50 */
+  presenceQuery(userIds) {
+    const ids = Array.isArray(userIds) ? userIds.map(x => String(x)) : []
+    return axios.post(
+      getUrlList().chatPresenceQuery,
+      { userIds: ids },
       authConfig({ headers: { 'Content-Type': 'application/json' } })
     )
   }

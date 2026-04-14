@@ -116,3 +116,39 @@ export function emitConversationTyping(conversationId, typing) {
     typing: Boolean(typing)
   })
 }
+
+const PRESENCE_HEARTBEAT_MS = 45_000
+/** @type {ReturnType<typeof setInterval> | null} */
+let presenceHeartbeatTimer = null
+
+function emitPresencePingOnce() {
+  const s = ioRef
+  if (s?.connected) {
+    s.emit('presence:ping')
+  }
+}
+
+function onVisibilityForPresence() {
+  if (document.visibilityState === 'visible') {
+    emitPresencePingOnce()
+  }
+}
+
+/** Refresh Redis presence TTL; call after connectChatSocket, stop before disconnectChatSocket. */
+export function startPresenceHeartbeat() {
+  if (!import.meta.client) {
+    return
+  }
+  stopPresenceHeartbeat()
+  emitPresencePingOnce()
+  presenceHeartbeatTimer = setInterval(emitPresencePingOnce, PRESENCE_HEARTBEAT_MS)
+  document.addEventListener('visibilitychange', onVisibilityForPresence)
+}
+
+export function stopPresenceHeartbeat() {
+  if (presenceHeartbeatTimer != null) {
+    clearInterval(presenceHeartbeatTimer)
+    presenceHeartbeatTimer = null
+  }
+  document.removeEventListener('visibilitychange', onVisibilityForPresence)
+}
