@@ -271,7 +271,7 @@
                     >
                         <NuxtLink :to="{ name: 'MyProfile', params: { username: follower.username } }">
                             <img
-                                :src="follower.profile_picture ? `${apiOrigin}/images/avatars/${follower.profile_picture.split('/').pop()}` : '/images/imageUserDefault.png'"
+                                :src="follower.profile_picture ? resolveMediaUrl(follower.profile_picture) : '/images/imageUserDefault.png'"
                                 alt=""
                                 class="mr-4 h-10 w-10 rounded-full object-cover"
                             />
@@ -320,7 +320,7 @@
                     >
                         <NuxtLink :to="{ name: 'MyProfile', params: { username: following.username } }">
                             <img
-                                :src="following.profile_picture ? `${apiOrigin}/images/avatars/${following.profile_picture.split('/').pop()}` : '/images/imageUserDefault.png'"
+                                :src="following.profile_picture ? resolveMediaUrl(following.profile_picture) : '/images/imageUserDefault.png'"
                                 alt=""
                                 class="mr-4 h-10 w-10 rounded-full object-cover"
                             />
@@ -366,6 +366,10 @@ export default {
         ProfilePhotoGrid,
         ProfileGalleryGrid,
     },
+    setup() {
+        const { resolveMediaUrl } = useResolvePublicMediaUrl()
+        return { resolveMediaUrl }
+    },
     data() {
         return {
             activeTab: null,
@@ -401,10 +405,14 @@ export default {
             }
         },
         profilePictureUrl() {
-            return this.user.profile_picture ? `${this.apiOrigin}/images/avatars/${this.user.profile_picture.split('/').pop()}` : '/images/imageUserDefault.png';
+            return this.user.profile_picture
+                ? (this.resolveMediaUrl(this.user.profile_picture) || '/images/imageUserDefault.png')
+                : '/images/imageUserDefault.png';
         },
         coverPhotoUrl() {
-            return this.user.cover_photo ? `${this.apiOrigin}/images/covers/${this.user.cover_photo.split('/').pop()}` : '/images/blackImage.jpeg';
+            return this.user.cover_photo
+                ? (this.resolveMediaUrl(this.user.cover_photo) || '/images/blackImage.jpeg')
+                : '/images/blackImage.jpeg';
         },
         truncatedBio() {
             if (this.user.bio && this.user.bio.length > 100) {

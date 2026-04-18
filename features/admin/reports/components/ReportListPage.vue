@@ -119,7 +119,7 @@
               <span class="text-slate-700">{{ record.report_date || '—' }}</span>
             </template>
             <template v-else-if="column.key === 'actions'">
-              <a-space size="small">
+              <a-space v-if="!isReportResolved(record)" size="small">
                 <a-button
                   type="text"
                   danger
@@ -235,6 +235,10 @@ function reportedPhotoImageUrl(record) {
     return path
   }
   return `${mediaBase.value}${path.startsWith('/') ? '' : '/'}${path}`
+}
+
+function isReportResolved(record) {
+  return String(record?.status || '').toLowerCase().trim() === 'resolved'
 }
 
 function statusBadgeClass(status) {

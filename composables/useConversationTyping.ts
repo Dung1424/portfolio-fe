@@ -3,7 +3,7 @@ import type { Ref } from 'vue'
 import {
   getChatSocket,
   emitConversationTyping,
-  onChatSocketReady,
+  onChatSocketReady
 } from '~/services/chatSocket.js'
 
 const PEER_TYPING_IDLE_MS = 3000
@@ -20,7 +20,7 @@ type TypingPayload = {
  */
 export function useConversationTyping(
   conversationId: Ref<string | null | undefined>,
-  myUserId: Ref<string | null | undefined>,
+  myUserId: Ref<string | null | undefined>
 ) {
   const peerTyping = ref(false)
   let peerIdleTimer: ReturnType<typeof setTimeout> | null = null
@@ -71,8 +71,7 @@ export function useConversationTyping(
           peerTyping.value = false
           peerIdleTimer = null
         }, PEER_TYPING_IDLE_MS)
-      }
-      else {
+      } else {
         peerTyping.value = false
         if (peerIdleTimer) {
           clearTimeout(peerIdleTimer)

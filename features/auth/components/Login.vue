@@ -126,7 +126,18 @@ export default {
                 localStorage.setItem('token', response.data.token);
                 localStorage.setItem('refresh_token', response.data.refresh_token);
 
-                window.location.href = response.data.route;
+                // Laravel url('/') uses APP_URL; keep browser origin when hostname matches (gateway).
+                const raw = response.data.route
+                let href = raw
+                try {
+                    const u = new URL(raw, window.location.origin)
+                    if (u.hostname === window.location.hostname) {
+                        href = `${window.location.origin}${u.pathname}${u.search}${u.hash}`
+                    }
+                } catch {
+                    /* giữ raw */
+                }
+                window.location.href = href
             } catch (error) {
                 console.error(error);
                 this.errorMessage = getErrorMessage(error, 'Login failed, please try again.');

@@ -237,6 +237,10 @@ export default {
         AddToGalleryModal,
         ReportPhotoModal,
     },
+    setup() {
+        const { resolveMediaUrl } = useResolvePublicMediaUrl()
+        return { resolveMediaUrl }
+    },
     data() {
         return {
             showFilterDropdown: false,
@@ -248,7 +252,7 @@ export default {
             images: [],
             /** Lưới ảnh: skeleton + tối thiểu thời gian shimmer (tránh tắt ngay khi API trả về) */
             photosLoading: false,
-            _fetchPhotosSeq: 0,
+            fetchPhotosSeq: 0,
             showAddToGallery: false,
             selectedPhotoId: null,
             showReportModal: false,
@@ -306,7 +310,7 @@ export default {
                 this.photosLoading = false;
                 return;
             }
-            const myId = ++this._fetchPhotosSeq;
+            const myId = ++this.fetchPhotosSeq;
             const startedAt = Date.now();
             this.photosLoading = true;
             const token = localStorage.getItem('token');
@@ -315,21 +319,20 @@ export default {
                 const response = await categoryService.fetchPhotosByCategorySlugs(slugs, {
                     headers: token ? { 'Authorization': 'Bearer ' + token } : {}
                 });
-                if (myId !== this._fetchPhotosSeq) {
+                if (myId !== this.fetchPhotosSeq) {
                     return;
                 }
                 this.images = response.data;
             } catch (error) {
                 console.error('Failed to fetch photos:', error);
-                if (myId === this._fetchPhotosSeq) {
+                if (myId === this.fetchPhotosSeq) {
                     this.images = [];
                 }
             } finally {
-                if (myId !== this._fetchPhotosSeq) {
-                    return;
+                if (myId === this.fetchPhotosSeq) {
+                    await waitRemainingSkeletonMs(startedAt);
+                    this.photosLoading = false;
                 }
-                await waitRemainingSkeletonMs(startedAt);
-                this.photosLoading = false;
             }
         },
         updateFollowingState() {
@@ -431,14 +434,8 @@ export default {
             });
         },
         getProfilePicture(profilePicture) {
-            if (!profilePicture) {
-                return '/images/imageUserDefault.png';
-            }
-            const baseUrl = `${this.apiOrigin}/images/avatars/`;
-            if (profilePicture.startsWith('http')) {
-                return profilePicture;
-            }
-            return baseUrl + profilePicture.split('/').pop();
+            const url = this.resolveMediaUrl(profilePicture);
+            return url || '/images/imageUserDefault.png';
         },
         toggleFilterDropdown() {
             this.showFilterDropdown = !this.showFilterDropdown;
