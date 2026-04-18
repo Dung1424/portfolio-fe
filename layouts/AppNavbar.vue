@@ -12,12 +12,12 @@ import {
   getChatSocket,
   startPresenceHeartbeat,
   stopPresenceHeartbeat
-} from '~/services/chatSocket.js'
+} from '~/features/chat/services/chatSocket.js'
 import {
   getChatNotifyPublicSrc,
   playChatNotificationSound,
   primeChatNotificationAudio
-} from '~/utils/chatMessageSound.js'
+} from '~/features/chat/utils/chatMessageSound.js'
 
 const authStore = useAuthStore()
 const userStore = useUserStore()

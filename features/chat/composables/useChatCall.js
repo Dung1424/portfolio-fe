@@ -1,6 +1,6 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { notification } from 'ant-design-vue'
-import { getChatSocket, onChatSocketReady } from '~/services/chatSocket.js'
+import { getChatSocket, onChatSocketReady } from '~/features/chat/services/chatSocket.js'
 import { CALL_EVENT, CALL_TYPE } from '~/features/chat/services/call.contract.js'
 import { chatApi, unwrapChatData } from '~/features/chat/services/chat.api.js'
 

@@ -4,15 +4,15 @@ import { chatApi, unwrapChatData } from '~/features/chat/services/chat.api.js'
 import {
   mergeParticipantReceiptsFromEnvelope,
   patchParticipantReceipts
-} from '~/utils/chatReceipts.js'
-import { isMongoObjectIdString } from '~/utils/chatObjectId.js'
+} from '~/features/chat/utils/chatReceipts.js'
+import { isMongoObjectIdString } from '~/features/chat/utils/chatObjectId.js'
 import {
   MESSAGES_CHUNK_SIZE,
   bumpConversationRowFromMessage,
   mapApiMessageToUi,
   nextMessagesCursorFromData,
   sortMessagesByTimeAsc
-} from '~/utils/chatMappers.js'
+} from '~/features/chat/utils/chatMappers.js'
 
 /**
  * @param {import('vue').Ref<unknown[]>} conversations

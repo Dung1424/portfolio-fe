@@ -2,7 +2,7 @@ import {
   isMongoObjectIdString,
   maxWatermarkId,
   messageIdAtOrBeforeWatermark
-} from '~/utils/chatObjectId.js'
+} from '~/features/chat/utils/chatObjectId.js'
 
 export function normalizeParticipantReceipts(list) {
   if (!Array.isArray(list)) {

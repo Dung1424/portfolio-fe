@@ -3,7 +3,7 @@ import {
   getChatNotifyPublicSrc,
   playChatNotificationSound,
   unlockChatNotificationAudio
-} from '~/utils/chatMessageSound.js'
+} from '~/features/chat/utils/chatMessageSound.js'
 
 /**
  * @param {import('vue').Ref<string | null>} selectedId

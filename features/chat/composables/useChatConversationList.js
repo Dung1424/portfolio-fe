@@ -5,7 +5,7 @@ import { useUserStore } from '~/stores/userStore.js'
 import { useResolvePublicMediaUrl } from '~/composables/useMediaBase'
 import { chatApi, unwrapChatData } from '~/features/chat/services/chat.api.js'
 import { profileService } from '~/features/profile/services/profile.api.js'
-import { mapApiConversationToUi } from '~/utils/chatMappers.js'
+import { mapApiConversationToUi } from '~/features/chat/utils/chatMappers.js'
 
 const peerProfileCache = new Map()
 

@@ -4,7 +4,7 @@ import {
   getChatSocket,
   emitConversationTyping,
   onChatSocketReady
-} from '~/services/chatSocket.js'
+} from '~/features/chat/services/chatSocket.js'
 
 const PEER_TYPING_IDLE_MS = 3000
 

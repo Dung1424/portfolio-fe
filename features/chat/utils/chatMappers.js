@@ -1,4 +1,4 @@
-import { normalizeParticipantReceipts } from '~/utils/chatReceipts.js'
+import { normalizeParticipantReceipts } from '~/features/chat/utils/chatReceipts.js'
 
 export const MESSAGES_CHUNK_SIZE = 20
 
