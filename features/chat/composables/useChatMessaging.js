@@ -36,7 +36,6 @@ export function useChatMessaging(
   const draft = ref('')
   const replyTo = ref(null)
   const pendingChatImage = ref(null)
-  const chatImageInputRef = ref(null)
   const messagesScrollEl = ref(null)
   const highlightedMessageId = ref(null)
   let highlightedTimer = null
@@ -440,10 +439,6 @@ export function useChatMessaging(
     }
   }
 
-  function openChatImagePicker() {
-    chatImageInputRef.value?.click()
-  }
-
   async function onChatImageSelected(ev) {
     const input = ev.target
     const file = input.files?.[0]
@@ -574,7 +569,6 @@ export function useChatMessaging(
     draft,
     replyTo,
     pendingChatImage,
-    chatImageInputRef,
     messagesScrollEl,
     highlightedMessageId,
     active,
@@ -594,7 +588,6 @@ export function useChatMessaging(
     startReplyToMessage,
     clearReplyToMessage,
     jumpToMessage,
-    openChatImagePicker,
     onChatImageSelected,
     send,
     sendSticker

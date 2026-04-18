@@ -87,7 +87,6 @@ const {
   draft,
   replyTo,
   pendingChatImage,
-  chatImageInputRef,
   messagesScrollEl,
   highlightedMessageId,
   active,
@@ -106,7 +105,6 @@ const {
   startReplyToMessage: startReplyToMessageInner,
   clearReplyToMessage,
   jumpToMessage,
-  openChatImagePicker,
   onChatImageSelected,
   send: postChatMessage,
   sendSticker: postChatSticker,
@@ -868,13 +866,6 @@ function startVideoCall() {
   startOutgoingCall(CALL_TYPE.VIDEO)
 }
 
-function openChatImagePickerGuarded() {
-  if (!messagingAllowed.value) {
-    return
-  }
-  openChatImagePicker()
-}
-
 function endCall() {
   hangupActiveCall('hangup')
 }
@@ -1338,12 +1329,10 @@ onUnmounted(() => {
                 :reply-to="replyTo"
                 :messaging-allowed="messagingAllowed"
                 :send-pending="sendPending"
-                :image-input-ref="chatImageInputRef"
                 @submit="sendMessage"
                 @composer-input="onComposerInput"
                 @composer-blur="stopTypingNow"
                 @composer-keydown="onComposerKeydown"
-                @attach-photo="openChatImagePickerGuarded"
                 @toggle-sticker-picker="toggleStickerPicker"
                 @select-sticker-pack="selectStickerPack"
                 @send-sticker="sendStickerMessage"
