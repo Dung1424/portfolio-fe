@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { STICKER_PACK_IDS, STICKER_PACK_LABELS } from '~/features/chat/composables/useChatStickerPicker.js'
 
 const props = defineProps({
@@ -14,8 +14,6 @@ const props = defineProps({
   draft: { type: String, default: '' },
   messagingAllowed: { type: Boolean, default: true },
   sendPending: { type: Boolean, default: false },
-  /** Ref từ useChatMessaging — gán vào input file ẩn. */
-  imageInputRef: { type: Object, default: null },
 })
 
 const emit = defineEmits([
@@ -24,7 +22,6 @@ const emit = defineEmits([
   'composer-input',
   'composer-blur',
   'composer-keydown',
-  'attach-photo',
   'toggle-sticker-picker',
   'select-sticker-pack',
   'send-sticker',
@@ -39,11 +36,14 @@ const draftModel = computed({
   set: v => emit('update:draft', v),
 })
 
-function setImageInputEl(el) {
-  const r = props.imageInputRef
-  if (r && typeof r === 'object' && 'value' in r) {
-    r.value = el
+/** Giữ ref trong cùng component — truyền ref qua prop từ cha bị Vue unwrap nên `.click()` từ composable không còn element. */
+const chatImageFileInput = ref(null)
+
+function openChatImagePicker() {
+  if (!props.messagingAllowed) {
+    return
   }
+  chatImageFileInput.value?.click()
 }
 </script>
 
@@ -68,9 +68,11 @@ function setImageInputEl(el) {
       <span>{{ peerName }} is typing...</span>
     </div>
     <input
-      :ref="setImageInputEl"
+      ref="chatImageFileInput"
       type="file"
-      class="hidden"
+      class="fixed left-0 top-0 h-px w-px opacity-0"
+      tabindex="-1"
+      aria-hidden="true"
       accept="image/jpeg,image/png,image/gif,image/webp"
       @change="emit('image-selected', $event)"
     >
@@ -164,7 +166,7 @@ function setImageInputEl(el) {
           class="composer-icon-btn flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/80 hover:text-[#1877f2]"
           aria-label="Attach photo"
           :disabled="!messagingAllowed"
-          @click="emit('attach-photo')"
+          @click="openChatImagePicker"
         >
           <i class="fa-solid fa-plus text-[18px] leading-none" />
         </button>
