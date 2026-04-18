@@ -12,9 +12,7 @@
                 <div class="relative">
                     <img
                         class="h-24 w-24 rounded-full border border-gray-200/80 bg-gray-200 object-cover shadow-sm"
-                        :src="user.profile_picture
-                            ? `${apiOrigin}/images/avatars/${user.profile_picture.split('/').pop()}`
-                            : `${apiOrigin}/images/imageUserDefault.png`"
+                        :src="user.profile_picture ? resolveMediaUrl(user.profile_picture) : '/images/imageUserDefault.png'"
                         alt="User Avatar"
                     />
                     <button
@@ -107,6 +105,10 @@ export default {
     name: 'AccountSidebar',
     components: {
         UpdateProfileModal,
+    },
+    setup() {
+        const { resolveMediaUrl } = useResolvePublicMediaUrl()
+        return { resolveMediaUrl }
     },
     data() {
         return {

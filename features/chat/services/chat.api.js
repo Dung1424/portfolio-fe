@@ -52,6 +52,13 @@ export const chatApi = {
     return axios.get(getUrlList().chatConversation(conversationId), authConfig())
   },
 
+  getMessagingEligibility(conversationId) {
+    return axios.get(
+      getUrlList().chatMessagingEligibility(conversationId),
+      authConfig()
+    )
+  },
+
   /** Query: chunkSize (default 20, max 100), cursor (older messages) */
   getMessages(conversationId, params = {}) {
     return axios.get(getUrlList().chatConversationMessages(conversationId), {
@@ -63,11 +70,58 @@ export const chatApi = {
     })
   },
 
+  /** Query: q, chunkSize (max 50), cursor */
+  searchMessagesInConversation(conversationId, params = {}) {
+    return axios.get(getUrlList().chatConversationMessagesSearch(conversationId), {
+      ...authConfig(),
+      params: {
+        chunkSize: 20,
+        ...params
+      }
+    })
+  },
+
+  /** Query: before, after */
+  getMessagesAround(conversationId, messageId, params = {}) {
+    return axios.get(getUrlList().chatConversationMessagesAround(conversationId, messageId), {
+      ...authConfig(),
+      params: {
+        before: 20,
+        after: 10,
+        ...params
+      }
+    })
+  },
+
   /** Body: { text?, type?, attachments?, metadata? } */
   postMessage(conversationId, body) {
     return axios.post(
       getUrlList().chatConversationMessages(conversationId),
       body,
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  recallMessage(conversationId, messageId) {
+    return axios.post(
+      getUrlList().chatConversationMessageRecall(conversationId, messageId),
+      {},
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  pinMessage(conversationId, messageId) {
+    return axios.post(
+      getUrlList().chatConversationMessagePin(conversationId, messageId),
+      {},
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  unpinMessage(conversationId, messageId) {
+    return axios.post(
+      getUrlList().chatConversationMessageUnpin(conversationId, messageId),
+      {},
       authConfig({ headers: { 'Content-Type': 'application/json' } })
     )
   },

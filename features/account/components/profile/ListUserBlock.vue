@@ -104,6 +104,10 @@ export default {
     components: {
         Sidebar
     },
+    setup() {
+        const { resolveMediaUrl } = useResolvePublicMediaUrl()
+        return { resolveMediaUrl }
+    },
     props: {
         embedded: {
             type: Boolean,
@@ -125,15 +129,8 @@ export default {
     },
     methods: {
         avatarUrl(user) {
-            if (!user?.profile_picture) {
-                return '/images/imageUserDefault.png';
-            }
-            const p = user.profile_picture;
-            if (p.startsWith('http')) {
-                return p;
-            }
-            const path = p.startsWith('/') ? p : `/${p}`;
-            return `${this.apiOrigin}${path}`;
+            const url = this.resolveMediaUrl(user?.profile_picture);
+            return url || '/images/imageUserDefault.png';
         },
         confirmUnblockUser(user) {
             Modal.confirm({

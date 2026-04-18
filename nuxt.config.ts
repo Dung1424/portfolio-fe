@@ -50,6 +50,14 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000',
+      /** Chat (Node). Mặc định trùng apiBase khi dùng portfolio-gateway (một origin). */
+      chatApi:
+        process.env.NUXT_PUBLIC_CHAT_API
+        || process.env.NUXT_PUBLIC_API_BASE
+        || 'http://localhost:3010',
+      webRtcIceServers:
+        process.env.NUXT_PUBLIC_WEBRTC_ICE_SERVERS
+        || '[{"urls":"stun:stun.l.google.com:19302"}]',
       siteName: process.env.NUXT_PUBLIC_SITE_NAME || 'MyPortfolio',
       siteDescription:
         process.env.NUXT_PUBLIC_SITE_DESCRIPTION

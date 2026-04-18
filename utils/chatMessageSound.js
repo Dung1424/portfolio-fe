@@ -36,33 +36,48 @@ export function getChatNotifyPublicSrc() {
  * @param {HTMLAudioElement | null} [preferredEl]
  */
 export function unlockChatNotificationAudio(preferredEl) {
+  void primeChatNotificationAudio(preferredEl)
+}
+
+/**
+ * Try to prime the browser audio permission from a user gesture.
+ * Resolves true only when playback was actually allowed.
+ * @param {HTMLAudioElement | null} [preferredEl]
+ * @returns {Promise<boolean>}
+ */
+export function primeChatNotificationAudio(preferredEl) {
   if (!import.meta.client) {
-    return
+    return Promise.resolve(false)
+  }
+  const src = getChatNotifyPublicSrc()
+  const primeFreshAudio = () => {
+    const a = new Audio(src)
+    a.muted = true
+    return a.play()
+      .then(() => {
+        a.pause()
+        a.currentTime = 0
+        return true
+      })
+      .catch(() => false)
   }
   const el = preferredEl ?? null
   if (el) {
     const prev = el.muted
     el.muted = true
-    void el.play()
+    return el.play()
       .then(() => {
         el.pause()
         el.currentTime = 0
         el.muted = prev
+        return true
       })
       .catch(() => {
         el.muted = prev
+        return primeFreshAudio()
       })
-    return
   }
-  const src = getChatNotifyPublicSrc()
-  const a = new Audio(src)
-  a.muted = true
-  void a.play()
-    .then(() => {
-      a.pause()
-      a.currentTime = 0
-    })
-    .catch(() => {})
+  return primeFreshAudio()
 }
 
 /**

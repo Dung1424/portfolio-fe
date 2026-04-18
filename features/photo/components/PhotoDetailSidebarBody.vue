@@ -37,7 +37,7 @@
             >
                 <span class="inline-block rounded-full bg-white p-[3px] ring-2 ring-[#40c1df] [box-shadow:0_0_0_2px_#fff]">
                     <img
-                        :src="pd.photoDetail.user.profile_picture ? pd.apiOrigin + pd.photoDetail.user.profile_picture : '/images/imageUserDefault.png'"
+                        :src="pd.photoDetail.user.profile_picture ? resolveMediaUrl(pd.photoDetail.user.profile_picture) : '/images/imageUserDefault.png'"
                         alt=""
                         class="block h-16 w-16 rounded-full object-cover"
                     />
@@ -77,7 +77,7 @@
                 <div class="h-14 w-14 shrink-0 overflow-hidden rounded-full bg-[#d1d5db] ring-2 ring-white ring-offset-1 ring-offset-[#f3f4f6]">
                     <img
                         v-if="pd.userStore.user?.profile_picture"
-                        :src="pd.apiOrigin + pd.userStore.user.profile_picture"
+                        :src="resolveMediaUrl(pd.userStore.user.profile_picture)"
                         alt=""
                         class="h-full w-full object-cover"
                     />
@@ -127,7 +127,7 @@
                     <li v-for="comment in pd.comments" :key="comment.id" class="py-3 first:pt-0">
                         <div class="flex gap-2.5">
                             <img
-                                :src="comment?.user?.profile_picture ? pd.apiOrigin + comment.user.profile_picture : '/images/imageUserDefault.png'"
+                                :src="comment?.user?.profile_picture ? resolveMediaUrl(comment.user.profile_picture) : '/images/imageUserDefault.png'"
                                 alt=""
                                 class="mt-0.5 h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-[#eee]"
                             />
@@ -232,5 +232,9 @@
 export default {
     name: 'PhotoDetailSidebarBody',
     inject: ['pd'],
+    setup() {
+        const { resolveMediaUrl } = useResolvePublicMediaUrl()
+        return { resolveMediaUrl }
+    },
 }
 </script>

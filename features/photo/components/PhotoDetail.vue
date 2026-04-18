@@ -208,7 +208,7 @@
                     <div v-if="likedUsers.length > 0" class="p-4">
                         <div v-for="user in likedUsers" :key="user.id" class="flex items-center border-b-2 border-[#eee] py-4">
                             <NuxtLink :to="{ name: 'MyProfile', params: { username: user.username } }">
-                                <img :src="user.profile_picture ? `${apiOrigin}/images/avatars/${user.profile_picture.split('/').pop()}` : '/images/imageUserDefault.png'"
+                                <img :src="user.profile_picture ? resolveMediaUrl(user.profile_picture) : '/images/imageUserDefault.png'"
                                      alt="Avatar"
                                      class="mr-4 h-10 w-10 shrink-0 rounded-full object-cover" />
                             </NuxtLink>
@@ -258,6 +258,10 @@ export default {
         ReportGalleryModal,
         PhotoDetailSidebarBody,
         PhotoDetailActionsBar,
+    },
+    setup() {
+        const { resolveMediaUrl } = useResolvePublicMediaUrl()
+        return { resolveMediaUrl }
     },
     provide() {
         return {

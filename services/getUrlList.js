@@ -1,3 +1,30 @@
+import { useRuntimeConfig } from '#app'
+
+/**
+ * Laravel + chat origins; chat defaults to apiBase (single gateway host).
+ * @returns {{ base: string, chatServerOrigin: string }}
+ */
+function resolveApiHosts() {
+  let apiRaw = import.meta.env?.NUXT_PUBLIC_API_BASE
+  let chatRaw = import.meta.env?.NUXT_PUBLIC_CHAT_API
+  try {
+    const rc = useRuntimeConfig()
+    if (rc?.public?.apiBase) {
+      apiRaw = rc.public.apiBase
+    }
+    if (rc?.public?.chatApi) {
+      chatRaw = rc.public.chatApi
+    }
+  } catch {
+    /* composable ngoài Nuxt */
+  }
+  const base = String(apiRaw || 'http://127.0.0.1:8000').replace(/\/$/, '')
+  const chatServerOrigin = String(
+    (chatRaw && String(chatRaw).trim()) || base || 'http://localhost:3010'
+  ).replace(/\/$/, '')
+  return { base, chatServerOrigin }
+}
+
 /**
  * Admin API. Paths are relative to `root` = `NUXT_PUBLIC_API_BASE` + `/api/v1/admin`
  * (same as axios `baseURL` in `adminClient.ts`). Khớp `routes/admin.php`.
@@ -68,12 +95,8 @@ export function getAdminPaths() {
  * Public routes: `routes/api.php` (prefix `api/v1`).
  */
 export function getUrlList() {
-  const raw = import.meta.env?.NUXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000'
-  const base = String(raw).replace(/\/$/, '')
+  const { base, chatServerOrigin } = resolveApiHosts()
   const baseUrl = `${base}/api/v1`
-  /** Chat service (Node). `NUXT_PUBLIC_CHAT_API` ví dụ `http://localhost:3010` — REST dùng `/api/v1`, Socket.IO dùng gốc host (không path). */
-  const chatRaw = import.meta.env?.NUXT_PUBLIC_CHAT_API || 'http://localhost:3010'
-  const chatServerOrigin = String(chatRaw).replace(/\/$/, '')
   const chatApi = `${chatServerOrigin}/api/v1`
   const adminPaths = getAdminPaths()
   const enc = encodeURIComponent
@@ -180,9 +203,23 @@ export function getUrlList() {
     chatConversationCreate: `${chatApi}/conversations`,
     chatConversation: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}`,
+    /** GET — Laravel block/khóa (1-1), Node proxy */
+    chatMessagingEligibility: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/messaging-eligibility`,
     /** Query: limit, before (ObjectId) */
     chatConversationMessages: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/messages`,
+    /** Query: q, chunkSize, cursor */
+    chatConversationMessagesSearch: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/messages/search`,
+    chatConversationMessagesAround: (conversationId, messageId) =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/messages/around/${enc(String(messageId))}`,
+    chatConversationMessageRecall: (conversationId, messageId) =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/messages/${enc(String(messageId))}/recall`,
+    chatConversationMessagePin: (conversationId, messageId) =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/messages/${enc(String(messageId))}/pin`,
+    chatConversationMessageUnpin: (conversationId, messageId) =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/messages/${enc(String(messageId))}/unpin`,
     chatConversationRead: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/read`,
     chatPresenceQuery: `${chatApi}/presence/query`,

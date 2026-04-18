@@ -1,8 +1,23 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
+import { formatDistanceToNow } from 'date-fns'
 import { useAuthStore } from '~/stores/authStore'
 import { useUserStore } from '~/stores/userStore'
 import { useNotificationStore } from '~/stores/notificationStore'
+import { chatApi, unwrapChatData } from '~/features/chat/services/chat.api.js'
+import { profileService } from '~/features/profile/services/profile.api.js'
+import {
+  connectChatSocket,
+  disconnectChatSocket,
+  getChatSocket,
+  startPresenceHeartbeat,
+  stopPresenceHeartbeat
+} from '~/services/chatSocket.js'
+import {
+  getChatNotifyPublicSrc,
+  playChatNotificationSound,
+  primeChatNotificationAudio
+} from '~/utils/chatMessageSound.js'
 
 const authStore = useAuthStore()
 const userStore = useUserStore()
@@ -24,9 +39,42 @@ type NavbarNotification = {
   galleryId?: number | null
 }
 
+type ChatSocketAttachment = {
+  kind?: string | null
+  objectKey?: string | null
+}
+
+type ChatSocketMessage = {
+  text?: string | null
+  attachments?: ChatSocketAttachment[] | null
+  senderUserId?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+}
+
+type ChatSocketPayload = {
+  conversationId?: string | null
+  message?: ChatSocketMessage | null
+}
+
+type SenderProfile = {
+  name: string
+  avatarUrl: string
+}
+
+type ChatToastItem = {
+  id: string
+  conversationId: string
+  senderName: string
+  senderAvatarUrl: string
+  senderInitials: string
+  messageText: string
+  relativeTime: string
+}
+
 const notifications = computed(() => notificationsRef.value as NavbarNotification[])
 
-const mediaBase = useMediaBase()
+const { resolveMediaUrl } = useResolvePublicMediaUrl()
 const route = useRoute()
 const router = useRouter()
 const searchQuery = ref('')
@@ -37,6 +85,7 @@ const userMenuOpen = ref(false)
 const notifOpen = ref(false)
 const mobileNavOpen = ref(false)
 const searchScopeOpen = ref(false)
+const chatNotifyAudioRef = ref<HTMLAudioElement | null>(null)
 
 const searchScopeLabel = computed(() => {
   if (searchScope.value === 'galleries') {
@@ -48,6 +97,198 @@ const searchScopeLabel = computed(() => {
   return 'Photos'
 })
 
+const chatUnreadTotal = ref(0)
+const hasChatUnread = computed(() => chatUnreadTotal.value > 0)
+const chatNotifySoundSrc = computed(() => getChatNotifyPublicSrc())
+const senderProfileCache = new Map<string, SenderProfile>()
+const chatToasts = ref<ChatToastItem[]>([])
+const chatToastTimers = new Map<string, ReturnType<typeof setTimeout>>()
+let removeGlobalChatAudioUnlockListeners: (() => void) | null = null
+
+async function refreshChatUnreadBadge() {
+  if (!import.meta.client || !authStore.isLoggedIn) {
+    chatUnreadTotal.value = 0
+    return
+  }
+  try {
+    const res = await chatApi.folderUnreadSummary()
+    const data = unwrapChatData(res)
+    const inbox = typeof data?.inbox?.unreadTotal === 'number' ? data.inbox.unreadTotal : 0
+    const pending = typeof data?.pending?.unreadTotal === 'number' ? data.pending.unreadTotal : 0
+    chatUnreadTotal.value = Math.max(0, inbox) + Math.max(0, pending)
+  } catch (error) {
+    console.error('refreshChatUnreadBadge', error)
+  }
+}
+
+function onChatUnreadSocketEvent() {
+  refreshChatUnreadBadge()
+}
+
+function isViewingChatPage() {
+  return route.name === 'Chat'
+}
+
+async function tryUnlockGlobalChatAudio() {
+  const unlocked = await primeChatNotificationAudio(chatNotifyAudioRef.value)
+  if (unlocked) {
+    removeGlobalChatAudioUnlockListeners?.()
+    removeGlobalChatAudioUnlockListeners = null
+  }
+  return unlocked
+}
+
+function mountGlobalChatAudioUnlock() {
+  if (!import.meta.client) {
+    return
+  }
+  removeGlobalChatAudioUnlockListeners?.()
+  const unlock = async () => {
+    await tryUnlockGlobalChatAudio()
+  }
+  removeGlobalChatAudioUnlockListeners = () => {
+    window.removeEventListener('pointerdown', unlock, true)
+    window.removeEventListener('keydown', unlock, true)
+    window.removeEventListener('touchstart', unlock, true)
+  }
+  window.addEventListener('pointerdown', unlock, true)
+  window.addEventListener('keydown', unlock, true)
+  window.addEventListener('touchstart', unlock, { capture: true, passive: true })
+}
+
+function buildIncomingMessageDescription(payload: ChatSocketPayload) {
+  const text = typeof payload?.message?.text === 'string' ? payload.message.text.trim() : ''
+  if (text) {
+    return text.length > 90 ? `${text.slice(0, 87)}...` : text
+  }
+  const hasImage = Array.isArray(payload?.message?.attachments)
+    && payload.message.attachments.some((item: ChatSocketAttachment) => item && (item.kind === 'image' || item.objectKey))
+  return hasImage ? 'Sent you an image.' : 'You have a new message.'
+}
+
+function senderInitials(name: string) {
+  return name.trim().slice(0, 2).toUpperCase() || 'M'
+}
+
+function formatChatToastTimeShort(value: string | null | undefined) {
+  if (!value) {
+    return 'now'
+  }
+  const date = new Date(value)
+  const diffMs = Date.now() - date.getTime()
+  if (!Number.isFinite(diffMs) || diffMs < 60_000) {
+    return 'now'
+  }
+  const minutes = Math.floor(diffMs / 60_000)
+  if (minutes < 60) {
+    return `${minutes}m`
+  }
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) {
+    return `${hours}h`
+  }
+  const days = Math.floor(hours / 24)
+  if (days < 7) {
+    return `${days}d`
+  }
+  return formatDistanceToNow(date, { addSuffix: false }).replace('about ', '')
+}
+
+async function getSenderProfile(senderUserId: string): Promise<SenderProfile> {
+  if (!senderUserId) {
+    return { name: 'New message', avatarUrl: '' }
+  }
+  const cached = senderProfileCache.get(senderUserId)
+  if (cached) {
+    return cached
+  }
+  try {
+    const token = localStorage.getItem('token')
+    const res = await profileService.fetchByUserId(senderUserId, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+    const raw = res?.data?.data ?? res?.data
+    const sender = raw?.user ?? raw
+    const profile = {
+      name: String(sender?.name || sender?.username || 'New message'),
+      avatarUrl: resolveMediaUrl(sender?.profile_picture || '')
+    }
+    senderProfileCache.set(senderUserId, profile)
+    return profile
+  } catch (error) {
+    console.error('getSenderProfile', error)
+    return { name: 'New message', avatarUrl: '' }
+  }
+}
+
+function removeChatToast(toastId: string) {
+  const timer = chatToastTimers.get(toastId)
+  if (timer) {
+    clearTimeout(timer)
+    chatToastTimers.delete(toastId)
+  }
+  chatToasts.value = chatToasts.value.filter(toast => toast.id !== toastId)
+}
+
+function scheduleChatToastDismiss(toastId: string) {
+  const timer = setTimeout(() => {
+    removeChatToast(toastId)
+  }, 4500)
+  chatToastTimers.set(toastId, timer)
+}
+
+function openConversationFromToast(conversationId: string, toastId: string) {
+  removeChatToast(toastId)
+  router.push({
+    path: '/chat',
+    query: conversationId ? { conversationId } : {}
+  })
+}
+
+async function openIncomingMessageToast(payload: ChatSocketPayload) {
+  if (isViewingChatPage()) {
+    return
+  }
+  const conversationId = payload?.conversationId != null ? String(payload.conversationId) : ''
+  const senderUserId = payload?.message?.senderUserId != null ? String(payload.message.senderUserId) : ''
+  const sender = await getSenderProfile(senderUserId)
+  const createdAt = payload?.message?.createdAt || payload?.message?.updatedAt
+  const toastId = conversationId || `chat-${Date.now()}`
+  const nextToast: ChatToastItem = {
+    id: toastId,
+    conversationId,
+    senderName: sender.name,
+    senderAvatarUrl: sender.avatarUrl,
+    senderInitials: senderInitials(sender.name),
+    messageText: buildIncomingMessageDescription(payload),
+    relativeTime: formatChatToastTimeShort(createdAt)
+  }
+  chatToasts.value = [
+    nextToast,
+    ...chatToasts.value.filter(toast => toast.id !== toastId)
+  ].slice(0, 4)
+  const existingTimer = chatToastTimers.get(toastId)
+  if (existingTimer) {
+    clearTimeout(existingTimer)
+  }
+  scheduleChatToastDismiss(toastId)
+}
+
+function onGlobalMessageNew(payload: ChatSocketPayload) {
+  const senderUserId = payload?.message?.senderUserId != null ? String(payload.message.senderUserId) : ''
+  const myUserId = (user.value as { id?: string | number } | null)?.id != null
+    ? String((user.value as { id?: string | number }).id)
+    : ''
+  if (!senderUserId || !myUserId || senderUserId === myUserId) {
+    return
+  }
+  refreshChatUnreadBadge()
+  void openIncomingMessageToast(payload)
+  if (!isViewingChatPage()) {
+    playChatNotificationSound(chatNotifyAudioRef.value)
+  }
+}
+
 function setSearchScope(scope: 'photos' | 'galleries' | 'photographers') {
   searchScope.value = scope
   searchScopeOpen.value = false
@@ -58,7 +299,7 @@ const navRef = ref<HTMLElement | null>(null)
 const userAvatarSrc = computed(() => {
   const path = user.value?.profile_picture
   if (!path) return ''
-  return joinMediaUrl(mediaBase.value, path)
+  return resolveMediaUrl(path)
 })
 const hasMoreNotifications = computed(() => currentPage.value < lastPage.value)
 
@@ -90,14 +331,32 @@ watch(
 
 onMounted(async () => {
   await authStore.checkLoginStatus()
+  mountGlobalChatAudioUnlock()
   if (authStore.isLoggedIn) {
     await userStore.fetchUserData()
-    await notificationStore.fetchNotifications(1)
+    await Promise.all([
+      notificationStore.fetchNotifications(1),
+      refreshChatUnreadBadge()
+    ])
+    connectChatSocket()
+    startPresenceHeartbeat()
+    const socket = getChatSocket()
+    socket?.on('message:new', onGlobalMessageNew)
+    socket?.on('conversation:read', onChatUnreadSocketEvent)
   }
   document.addEventListener('click', onDocumentClick)
 })
 
 onUnmounted(() => {
+  removeGlobalChatAudioUnlockListeners?.()
+  removeGlobalChatAudioUnlockListeners = null
+  chatToastTimers.forEach(timer => clearTimeout(timer))
+  chatToastTimers.clear()
+  const socket = getChatSocket()
+  socket?.off('message:new', onGlobalMessageNew)
+  socket?.off('conversation:read', onChatUnreadSocketEvent)
+  stopPresenceHeartbeat()
+  disconnectChatSocket()
   document.removeEventListener('click', onDocumentClick)
 })
 
@@ -154,10 +413,12 @@ function runSearch() {
 
 async function handleLogoutClick() {
   userMenuOpen.value = false
+  chatUnreadTotal.value = 0
   await authStore.handleLogout()
 }
 
 function toggleUserMenu() {
+  void tryUnlockGlobalChatAudio()
   userMenuOpen.value = !userMenuOpen.value
   if (userMenuOpen.value) {
     notifOpen.value = false
@@ -165,11 +426,35 @@ function toggleUserMenu() {
 }
 
 function toggleNotif() {
+  void tryUnlockGlobalChatAudio()
   notifOpen.value = !notifOpen.value
   if (notifOpen.value) {
     userMenuOpen.value = false
   }
 }
+
+watch(isLoggedIn, async (loggedIn) => {
+  if (!import.meta.client) {
+    return
+  }
+  const socket = getChatSocket()
+  socket?.off('message:new', onGlobalMessageNew)
+  socket?.off('conversation:read', onChatUnreadSocketEvent)
+  stopPresenceHeartbeat()
+
+  if (!loggedIn) {
+    chatUnreadTotal.value = 0
+    disconnectChatSocket()
+    return
+  }
+
+  await refreshChatUnreadBadge()
+  connectChatSocket()
+  startPresenceHeartbeat()
+  const nextSocket = getChatSocket()
+  nextSocket?.on('message:new', onGlobalMessageNew)
+  nextSocket?.on('conversation:read', onChatUnreadSocketEvent)
+})
 </script>
 
 <template>
@@ -177,6 +462,63 @@ function toggleNotif() {
     ref="navRef"
     class="fixed top-0 z-[1000] w-full border-b border-zinc-200 bg-white"
   >
+    <div class="pointer-events-none fixed right-4 top-16 z-[1200] flex w-[min(calc(100vw-2rem),360px)] flex-col gap-3">
+      <div
+        v-for="toast in chatToasts"
+        :key="toast.id"
+        class="pointer-events-auto rounded-[24px] bg-white p-4 shadow-[0_12px_40px_rgba(0,0,0,0.16)] ring-1 ring-black/5"
+      >
+        <div class="flex items-start gap-3">
+          <button
+            type="button"
+            class="flex min-w-0 flex-1 items-start gap-3 text-left"
+            @click="openConversationFromToast(toast.conversationId, toast.id)"
+          >
+            <img
+              v-if="toast.senderAvatarUrl"
+              :src="toast.senderAvatarUrl"
+              alt=""
+              class="h-14 w-14 shrink-0 rounded-full object-cover ring-1 ring-zinc-200"
+            >
+            <div
+              v-else
+              class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-[17px] font-semibold text-white"
+            >
+              {{ toast.senderInitials }}
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex min-w-0 items-center gap-2 pr-2">
+                <p class="min-w-0 flex-1 truncate text-[17px] font-semibold leading-tight text-zinc-900">
+                  {{ toast.senderName }}
+                </p>
+                <span class="shrink-0 text-[12px] font-medium uppercase tracking-[0.02em] text-zinc-400">
+                  {{ toast.relativeTime }}
+                </span>
+              </div>
+              <p class="mt-1 line-clamp-2 text-[15px] leading-snug text-zinc-700">
+                {{ toast.messageText }}
+              </p>
+            </div>
+          </button>
+          <button
+            type="button"
+            class="shrink-0 rounded-full p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600"
+            aria-label="Close message notification"
+            @click="removeChatToast(toast.id)"
+          >
+            <i class="fa-solid fa-xmark text-[18px]" />
+          </button>
+        </div>
+      </div>
+    </div>
+    <audio
+      ref="chatNotifyAudioRef"
+      preload="auto"
+      playsinline
+      class="pointer-events-none fixed left-0 top-0 h-px w-px opacity-0"
+      :src="chatNotifySoundSrc"
+      aria-hidden="true"
+    />
     <div class="mx-auto flex h-[52px] max-w-[1600px] flex-nowrap items-center gap-2 px-3 sm:gap-3 sm:px-5 lg:px-8">
       <!-- Left: logo + nav -->
       <div class="flex min-w-0 shrink-0 items-center gap-5 lg:gap-8">
@@ -344,12 +686,16 @@ function toggleNotif() {
 
           <NuxtLink
             to="/chat"
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors"
+            class="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors"
             :class="isChatActive ? 'bg-sky-100 text-[#1877f2]' : 'text-zinc-700 hover:bg-zinc-100'"
             title="Messages"
             aria-label="Messages"
           >
             <i class="fa-regular fa-paper-plane text-[19px]" />
+            <span
+              v-if="hasChatUnread"
+              class="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"
+            />
           </NuxtLink>
 
           <div class="relative">
