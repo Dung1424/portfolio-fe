@@ -23,9 +23,20 @@ import AdminSidebar from './AdminSidebar.vue'
 
 useHead({
   link: [
+    { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+    { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
+    {
+      rel: 'preload',
+      as: 'font',
+      type: 'font/woff2',
+      href: 'https://fonts.gstatic.com/s/raleway/v37/1Ptug8zYS_SKggPNyC0IT4ttDfA.woff2',
+      crossorigin: ''
+    },
     {
       rel: 'stylesheet',
-      href: 'https://fonts.googleapis.com/css2?family=Raleway:wght@500;600;700&display=swap'
+      href: 'https://fonts.googleapis.com/css2?family=Raleway:wght@500;600;700&display=swap',
+      media: 'print',
+      onload: `this.media='all'`
     }
   ]
 })

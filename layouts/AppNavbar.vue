@@ -599,7 +599,7 @@ watch(isLoggedIn, async (loggedIn) => {
           <input
             v-model="searchQuery"
             type="search"
-            placeholder="Search powered by AI"
+            placeholder="Search by keyword"
             class="min-w-0 flex-1 border-0 bg-transparent px-3 text-[14px] text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-0"
             @keyup.enter="runSearch"
           >
@@ -826,7 +826,7 @@ watch(isLoggedIn, async (loggedIn) => {
         <input
           v-model="searchQuery"
           type="search"
-          placeholder="Search powered by AI"
+          placeholder="Search by keyword"
           class="min-w-0 flex-1 border-0 bg-transparent px-2 text-sm focus:ring-0"
           @keyup.enter="runSearch"
         >
