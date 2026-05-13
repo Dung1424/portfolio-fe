@@ -18,9 +18,9 @@ function resolveApiHosts() {
   } catch {
     /* composable ngoài Nuxt */
   }
-  const base = String(apiRaw || 'http://127.0.0.1:8000').replace(/\/$/, '')
+  const base = String(apiRaw || 'http://localhost:8088').replace(/\/$/, '')
   const chatServerOrigin = String(
-    (chatRaw && String(chatRaw).trim()) || base || 'http://localhost:3010'
+    (chatRaw && String(chatRaw).trim()) || base || 'http://localhost:8088'
   ).replace(/\/$/, '')
   return { base, chatServerOrigin }
 }
@@ -30,7 +30,7 @@ function resolveApiHosts() {
  * (same as axios `baseURL` in `adminClient.ts`). Khớp `routes/admin.php`.
 **/
 export function getAdminPaths() {
-  const raw = import.meta.env?.NUXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000'
+  const raw = import.meta.env?.NUXT_PUBLIC_API_BASE || 'http://localhost:8088'
   const base = String(raw).replace(/\/$/, '')
   const root = `${base}/api/v1/admin`
   const enc = encodeURIComponent
