@@ -16,7 +16,15 @@ export const useFollowStore = defineStore('follow', {
         const response = await axios.get(getUrlList().getFollowingList, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
-        this.followingList = response.data.map(user => user.pivot.following_id)
+        const body = response.data
+        const rows = Array.isArray(body?.data) ? body.data : (Array.isArray(body) ? body : [])
+        this.followingList = rows.map((user) => {
+          const pivot = user?.pivot
+          if (pivot && pivot.following_id != null) {
+            return pivot.following_id
+          }
+          return user?.id
+        }).filter(Boolean)
       } catch (error) {
         console.error('Error fetching following list:', error)
       }
@@ -27,7 +35,15 @@ export const useFollowStore = defineStore('follow', {
         const response = await axios.get(getUrlList().getFollowersList, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
-        this.followersList = response.data.map(user => user.id)
+        const body = response.data
+        const rows = Array.isArray(body?.data) ? body.data : (Array.isArray(body) ? body : [])
+        this.followersList = rows.map((user) => {
+          const pivot = user?.pivot
+          if (pivot && pivot.follower_id != null) {
+            return pivot.follower_id
+          }
+          return user?.id
+        }).filter(Boolean)
       } catch (error) {
         console.error('Error fetching followers list:', error)
       }

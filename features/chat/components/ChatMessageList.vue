@@ -58,58 +58,99 @@ defineExpose({ scrollRoot })
       </div>
     </div>
     <div class="flex w-full flex-col">
-      <div
-        v-for="row in rows"
-        :key="row.msg.id"
-        class="flex gap-2.5"
-        :data-message-id="row.msg.id"
-        :class="[
-          api.isSystemMessage(row.msg)
-            ? 'justify-center'
-            : row.msg.me
-              ? 'justify-end'
-              : 'justify-start',
-          row.groupFirst && row.index > 0 ? 'mt-3' : row.groupFirst ? '' : 'mt-0.5',
-          highlightedMessageId === String(row.msg.id) ? 'rounded-2xl ring-2 ring-[#1877f2]/35 ring-offset-2 ring-offset-[#f0f2f5]' : ''
-        ]"
-      >
+      <template v-for="row in rows" :key="row.msg.id">
+        <div
+          v-if="peer.isGroup && !row.msg.me && row.groupFirst && !api.isSystemMessage(row.msg)"
+          class="w-full max-w-[85%] truncate pr-2 pl-[38px] text-left text-[13px] font-semibold text-zinc-600 sm:max-w-[70%]"
+          :class="row.index > 0 ? 'mt-3' : ''"
+        >
+          {{ api.groupMessageSender(row.msg).name }}
+        </div>
+        <div
+          class="flex gap-2.5"
+          :data-message-id="row.msg.id"
+          :class="[
+            api.isSystemMessage(row.msg)
+              ? 'w-full justify-center'
+              : row.msg.me
+                ? 'justify-end'
+                : 'justify-start',
+            peer.isGroup && !row.msg.me && !api.isSystemMessage(row.msg)
+              ? (row.groupFirst ? (row.index > 0 ? 'mt-0.5' : 'mt-0') : 'mt-0.5')
+              : (row.groupFirst && row.index > 0 ? 'mt-3' : row.groupFirst ? '' : 'mt-0.5'),
+            !row.msg.me && !api.isSystemMessage(row.msg) ? 'items-center' : '',
+            highlightedMessageId === String(row.msg.id) ? 'rounded-2xl ring-2 ring-[#1877f2]/35 ring-offset-2 ring-offset-[#f0f2f5]' : ''
+          ]"
+        >
         <img
-          v-if="!api.isSystemMessage(row.msg) && !row.msg.me && row.groupLast && !api.isAvatarBroken(peer.id)"
-          :src="peer.peerAvatarUrl || defaultAvatarUrl"
+          v-if="
+            !api.isSystemMessage(row.msg)
+              && !row.msg.me
+              && row.groupLast
+              && !api.isAvatarBroken(peer.isGroup ? api.incomingAvatarKey(row.msg) : peer.id)
+          "
+          :src="
+            peer.isGroup
+              ? (api.groupMessageSender(row.msg).avatarUrl || defaultAvatarUrl)
+              : (peer.peerAvatarUrl || defaultAvatarUrl)
+          "
           alt=""
           width="28"
           height="28"
-          class="mt-0.5 h-7 w-7 shrink-0 self-end rounded-full object-cover"
+          class="h-7 w-7 shrink-0 rounded-full object-cover"
           loading="lazy"
           decoding="async"
           role="button"
           tabindex="0"
           aria-label="Open profile"
-          @click.stop.prevent="api.openPeerProfile(peer)"
-          @keydown.enter.stop.prevent="api.openPeerProfile(peer)"
+          @click.stop.prevent="
+            peer.isGroup
+              ? api.openIncomingSenderProfile(row.msg)
+              : api.openPeerProfile(peer)
+          "
+          @keydown.enter.stop.prevent="
+            peer.isGroup
+              ? api.openIncomingSenderProfile(row.msg)
+              : api.openPeerProfile(peer)
+          "
         >
         <div
           v-else-if="!api.isSystemMessage(row.msg) && !row.msg.me && row.groupLast"
-          class="mt-0.5 flex h-7 w-7 shrink-0 self-end cursor-pointer items-center justify-center rounded-full text-[10px] font-bold text-white"
-          :class="api.fallbackClass(peer.id)"
+          class="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-[10px] font-bold text-white"
+          :class="api.fallbackClass(peer.isGroup ? api.incomingAvatarKey(row.msg) : peer.id)"
           role="button"
           tabindex="0"
           aria-label="Open profile"
-          @click.stop.prevent="api.openPeerProfile(peer)"
-          @keydown.enter.stop.prevent="api.openPeerProfile(peer)"
+          @click.stop.prevent="
+            peer.isGroup
+              ? api.openIncomingSenderProfile(row.msg)
+              : api.openPeerProfile(peer)
+          "
+          @keydown.enter.stop.prevent="
+            peer.isGroup
+              ? api.openIncomingSenderProfile(row.msg)
+              : api.openPeerProfile(peer)
+          "
         >
-          {{ api.initials(peer.name).slice(0, 1) }}
+          {{
+            peer.isGroup
+              ? api.initials(api.groupMessageSender(row.msg).name).slice(0, 1)
+              : api.initials(peer.name).slice(0, 1)
+          }}
         </div>
         <div
           v-else-if="!api.isSystemMessage(row.msg) && !row.msg.me"
-          class="mt-0.5 w-7 shrink-0 self-end"
+          class="w-7 shrink-0"
           aria-hidden="true"
         />
         <div
           class="max-w-[85%] sm:max-w-[70%]"
           :class="[
-            row.msg.me ? 'flex flex-col items-end' : '',
-            api.isSystemMessage(row.msg) ? 'w-full max-w-full sm:max-w-full flex items-center' : ''
+            api.isSystemMessage(row.msg)
+              ? 'w-full max-w-full shrink-0 sm:max-w-full flex flex-col items-center'
+              : row.msg.me
+                ? 'flex flex-col items-end'
+                : '',
           ]"
         >
           <div class="relative group/message">
@@ -186,12 +227,25 @@ defineExpose({ scrollRoot })
               </div>
             </div>
             <div
+              v-if="api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg)"
+              class="w-full px-2 py-1.5 sm:px-3"
+            >
+              <p
+                class="mx-auto max-w-md whitespace-pre-wrap break-words text-center text-[12px] font-normal leading-snug text-zinc-500"
+              >
+                {{
+                  row.msg.metadata?.kind === 'group_event'
+                    ? api.groupEventLineText(row.msg)
+                    : row.msg.text
+                }}
+              </p>
+            </div>
+            <div
+              v-else
               class="px-3.5 py-2.5 text-[15px] leading-[1.45] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
               :class="
-                api.isSystemMessage(row.msg)
-                  ? [
-                      'rounded-full border border-zinc-200/80 bg-zinc-100/95 text-zinc-600 text-[12px] font-medium shadow-none'
-                    ]
+                api.isCallLogMessage(row.msg)
+                  ? ['bg-transparent px-0 py-1 shadow-none']
                   : row.msg.isSticker
                     ? [
                         'bg-transparent px-0 py-0 shadow-none'
@@ -210,14 +264,8 @@ defineExpose({ scrollRoot })
               @mouseenter="!api.isSystemMessage(row.msg) && api.onMessageActionHoverEnter(row.msg.id)"
               @mouseleave="!api.isSystemMessage(row.msg) && api.onMessageActionHoverLeave(row.msg.id)"
             >
-              <p
-                v-if="api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg)"
-                class="whitespace-pre-wrap break-words text-center"
-              >
-                {{ row.msg.text }}
-              </p>
               <div
-                v-else-if="api.isCallLogMessage(row.msg)"
+                v-if="api.isCallLogMessage(row.msg)"
                 class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-medium"
                 :class="api.callLogTone(row.msg.metadata)"
               >
@@ -274,23 +322,105 @@ defineExpose({ scrollRoot })
             </div>
           </div>
           <p
-            v-if="row.showMeta"
-            class="mt-1 flex flex-wrap items-center gap-x-1.5 px-1.5 text-[11px] text-zinc-400"
-            :class="
-              api.isSystemMessage(row.msg)
-                ? 'justify-center text-center'
-                : row.msg.me
-                  ? 'justify-end text-right'
-                  : 'text-left'
-            "
+            v-if="row.showMeta && api.isSystemMessage(row.msg)"
+            class="mt-1 flex flex-wrap items-center justify-center gap-x-1.5 px-1.5 text-center text-[11px] text-zinc-400"
+          >
+            <span>{{ api.timeLabel(row.msg.at) }}</span>
+          </p>
+          <p
+            v-else-if="row.showMeta && row.msg.me"
+            class="mt-1 flex flex-wrap items-center justify-end gap-x-1.5 px-1.5 text-right text-[11px] text-zinc-400"
           >
             <span>{{ api.timeLabel(row.msg.at) }}</span>
             <span
-              v-if="row.msg.me && api.shouldShowOutgoingReceipt(peer.messages, row.msg.id, peer) && api.receiptLabel(peer, row.msg.id)"
+              v-if="
+                !peer.isGroup
+                  && api.shouldShowOutgoingReceipt(peer.messages, row.msg.id, peer)
+                  && api.receiptLabel(peer, row.msg.id)
+              "
             >· {{ api.receiptLabel(peer, row.msg.id) }}</span>
           </p>
+          <div
+            v-if="
+              row.showMeta
+                && row.msg.me
+                && !api.isSystemMessage(row.msg)
+                && peer.isGroup
+                && api.groupSeenDisplay(row.msg).length
+            "
+            class="mt-1 flex justify-end pr-1"
+          >
+            <div
+              class="flex flex-row-reverse items-center pl-2"
+              aria-label="Đã xem bởi"
+            >
+              <div
+                v-for="(s, si) in api.groupSeenDisplay(row.msg)"
+                :key="s.id"
+                class="relative h-6 w-6 shrink-0 rounded-full border-2 border-[#f0f2f5] bg-zinc-200"
+                :style="{ marginRight: si > 0 ? '-8px' : '0' }"
+              >
+                <img
+                  v-if="s.url"
+                  :src="s.url"
+                  alt=""
+                  class="h-full w-full rounded-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                >
+                <span
+                  v-else
+                  class="flex h-full w-full items-center justify-center text-[9px] font-bold text-white"
+                  :class="api.fallbackClass(s.id)"
+                >{{ s.initials.slice(0, 2) }}</span>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+        </div>
+        <p
+          v-if="row.showMeta && !row.msg.me && !api.isSystemMessage(row.msg)"
+          class="mt-1 pl-[38px] pr-2 text-[11px] text-zinc-400"
+        >
+          <span>{{ api.timeLabel(row.msg.at) }}</span>
+        </p>
+        <div
+          v-if="
+            row.showMeta
+              && !row.msg.me
+              && !api.isSystemMessage(row.msg)
+              && peer.isGroup
+              && api.groupSeenDisplay(row.msg).length
+          "
+          class="mt-0.5 flex w-full justify-end pr-1"
+        >
+          <div
+            class="flex flex-row-reverse items-center pl-2"
+            aria-label="Đã xem bởi"
+          >
+            <div
+              v-for="(s, si) in api.groupSeenDisplay(row.msg)"
+              :key="s.id"
+              class="relative h-6 w-6 shrink-0 rounded-full border-2 border-[#f0f2f5] bg-zinc-200"
+              :style="{ marginRight: si > 0 ? '-8px' : '0' }"
+            >
+              <img
+                v-if="s.url"
+                :src="s.url"
+                alt=""
+                class="h-full w-full rounded-full object-cover"
+                loading="lazy"
+                decoding="async"
+              >
+              <span
+                v-else
+                class="flex h-full w-full items-center justify-center text-[9px] font-bold text-white"
+                :class="api.fallbackClass(s.id)"
+              >{{ s.initials.slice(0, 2) }}</span>
+            </div>
+          </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>

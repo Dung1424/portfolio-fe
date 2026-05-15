@@ -203,6 +203,20 @@ export function getUrlList() {
     chatConversationCreate: `${chatApi}/conversations`,
     chatConversation: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}`,
+    chatConversationGroupPatch: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group`,
+    chatConversationGroupLeave: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group/leave`,
+    chatConversationGroupDissolve: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group/dissolve`,
+    chatConversationGroupTransferAdmin: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group/transfer-admin`,
+    /** POST body `{ userIds: string[] }` — admin thêm thành viên */
+    chatConversationGroupAddMembers: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group/members`,
+    /** POST body `{ userId }` — admin xóa thành viên */
+    chatConversationGroupRemoveMember: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group/members/remove`,
     /** GET — Laravel block/khóa (1-1), Node proxy */
     chatMessagingEligibility: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/messaging-eligibility`,

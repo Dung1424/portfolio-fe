@@ -51,7 +51,7 @@ export function mergeParticipantReceiptsFromEnvelope(conv, data) {
     return
   }
   if (Array.isArray(data.participantReceipts)) {
-    patchParticipantReceipts(conv, data.participantReceipts)
+    conv.participantReceipts = normalizeParticipantReceipts(data.participantReceipts)
   }
 }
 

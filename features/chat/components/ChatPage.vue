@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
-import { notification } from 'ant-design-vue'
+import { Modal, notification } from 'ant-design-vue'
 import { useChatMessageNotify } from '~/features/chat/composables/useChatMessageNotify.js'
 import { useChatConversationList } from '~/features/chat/composables/useChatConversationList.js'
 import { useChatCall } from '~/features/chat/composables/useChatCall.js'
@@ -9,6 +9,7 @@ import { useConversationTyping } from '~/features/chat/composables/useConversati
 import { useResolvePublicMediaUrl } from '~/composables/useMediaBase'
 import { profileService } from '~/features/profile/services/profile.api.js'
 import { useUserStore } from '~/stores/userStore.js'
+import { useFollowStore } from '~/stores/followStore.js'
 import { outgoingMessageReceiptLabel } from '~/features/chat/utils/chatReceipts.js'
 import { lastOwnUiMessageId } from '~/features/chat/utils/chatMappers.js'
 import { chatApi, unwrapChatData } from '~/features/chat/services/chat.api.js'
@@ -17,6 +18,7 @@ import ChatConversationSidebar from '~/features/chat/components/ChatConversation
 import ChatPinnedMessagesSection from '~/features/chat/components/ChatPinnedMessagesSection.vue'
 import ChatMessageList from '~/features/chat/components/ChatMessageList.vue'
 import ChatComposer from '~/features/chat/components/ChatComposer.vue'
+import ChatGroupDetailsDrawer from '~/features/chat/components/ChatGroupDetailsDrawer.vue'
 import { useChatThreadSearch } from '~/features/chat/composables/useChatThreadSearch.js'
 import { useChatStickerPicker } from '~/features/chat/composables/useChatStickerPicker.js'
 import {
@@ -36,8 +38,11 @@ import {
 } from '~/features/chat/services/chatSocket.js'
 
 const userStore = useUserStore()
+const followStore = useFollowStore()
 const { resolveMediaUrl } = useResolvePublicMediaUrl()
 const incomingProfileCache = new Map()
+/** userId → { name, username, avatarUrl } — cache hồ sơ tối thiểu cho chat nhóm */
+const chatUserMiniCache = new Map()
 
 /** Fallback when `peerAvatarUrl` is missing (served from `public/images/`). */
 const defaultAvatarUrl = '/images/userDefault.png'
@@ -57,9 +62,23 @@ const {
   onPresenceUpdate,
   scheduleRefreshFolderUnreadTotals,
   clearFolderUnreadDebounce,
+  mergeConversationFromRealtime,
 } = conversationList
 
 const myUserId = computed(() => userStore.user?.id ?? null)
+
+const groupDetailsOpen = ref(false)
+const groupDetailMemberRows = ref([])
+const addMemberCandidates = ref([])
+const groupMembersHydrateLoading = ref(false)
+const addMembersListLoading = ref(false)
+const addMembersSubmitLoading = ref(false)
+const groupDrawerContentLoading = computed(() =>
+  groupMembersHydrateLoading.value || addMembersListLoading.value,
+)
+
+/** Nhóm: userId → { name, avatarUrl, username } — hiển thị người gửi trong thread */
+const groupSenderDisplayByUserId = ref({})
 
 const notify = useChatMessageNotify(selectedId, mobileShowThread)
 const {
@@ -151,11 +170,22 @@ const messagingEligibility = ref({
   scope: 'not_direct',
 })
 
-const messagingAllowed = computed(
-  () => messagingEligibility.value.allowed !== false,
-)
+const messagingAllowed = computed(() => {
+  if (messagingEligibility.value.allowed === false) {
+    return false
+  }
+  const a = active.value
+  if (a?.type === 'group' && a?.canSendMessages === false) {
+    return false
+  }
+  return true
+})
 
 const messagingGateBannerText = computed(() => {
+  const a = active.value
+  if (a?.isGroup && a.viewerRemovedByAdmin && a.viewerHasLeft) {
+    return 'Admin đã xóa bạn khỏi nhóm. Bạn chỉ xem được tin nhắn tới thời điểm đó; tin mới hơn sẽ không hiển thị. Khi được mời lại, bạn xem lại toàn bộ lịch sử như bình thường.'
+  }
   if (messagingEligibility.value.allowed !== false) {
     return ''
   }
@@ -174,6 +204,8 @@ const messagingGateBannerText = computed(() => {
       'Khóa nội bộ CHAT_INTERNAL_SERVICE_KEY không khớp giữa Node và Laravel — kiểm tra hai file .env.',
     laravel_internal_not_configured:
       'Laravel chưa bật CHAT_INTERNAL_SERVICE_KEY (hoặc trả lỗi 503 cho API nội bộ).',
+    left_group: 'Bạn đã rời nhóm — chỉ xem được lịch sử, không gửi tin hoặc gọi.',
+    group_dissolved: 'Nhóm đã được giải tán.',
   }
   return map[r] || 'Không thể nhắn tin trong cuộc trò chuyện này.'
 })
@@ -297,7 +329,33 @@ const callDisplayAvatar = computed(() => {
 })
 
 function isSystemMessage(msg) {
-  return msg?.type === 'system' || isCallLogMessage(msg)
+  return (
+    msg?.type === 'system'
+    || isCallLogMessage(msg)
+    || msg?.metadata?.kind === 'group_event'
+  )
+}
+
+/** Trong nhóm, tách cụm bubble theo từng người gửi (không gộp hết phía "đối phương"). */
+function messagesInSameRun(prev, msg, isGroupConv) {
+  if (!prev) {
+    return false
+  }
+  if (isSystemMessage(prev) || isSystemMessage(msg)) {
+    return false
+  }
+  if (Boolean(prev.me) !== Boolean(msg.me)) {
+    return false
+  }
+  if (msg.me) {
+    return true
+  }
+  if (!isGroupConv) {
+    return true
+  }
+  const a = prev.senderUserId != null ? String(prev.senderUserId) : ''
+  const b = msg.senderUserId != null ? String(msg.senderUserId) : ''
+  return a !== '' && a === b
 }
 
 async function setListFolder(folder) {
@@ -416,14 +474,15 @@ const {
 
 const activeMessageRows = computed(() => {
   const list = active.value?.messages
+  const isGroupConv = Boolean(active.value?.isGroup)
   if (!list?.length) {
     return []
   }
   return list.map((msg, i) => {
     const prev = list[i - 1]
     const next = list[i + 1]
-    const sameRunPrev = prev && Boolean(prev.me) === Boolean(msg.me)
-    const sameRunNext = next && Boolean(next.me) === Boolean(msg.me)
+    const sameRunPrev = prev && messagesInSameRun(prev, msg, isGroupConv)
+    const sameRunNext = next && messagesInSameRun(msg, next, isGroupConv)
     return {
       msg,
       index: i,
@@ -521,6 +580,100 @@ async function openPeerProfile(conv) {
     return
   }
   await navigateTo({ name: 'MyProfile', params: { username } })
+}
+
+async function getChatUserDisplay(userId) {
+  const id = userId != null ? String(userId) : ''
+  if (!id) {
+    return { name: 'User', username: '', avatarUrl: '' }
+  }
+  if (chatUserMiniCache.has(id)) {
+    return chatUserMiniCache.get(id)
+  }
+  try {
+    const token = import.meta.client ? localStorage.getItem('token') : null
+    const res = await profileService.fetchByUserId(id, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    const raw = res?.data?.data ?? res?.data
+    const user = raw?.user ?? raw
+    const name = (user?.name && String(user.name).trim()) || user?.username || 'User'
+    const username = user?.username ? String(user.username) : ''
+    const pic = user?.profile_picture
+    const row = {
+      name: String(name),
+      username,
+      avatarUrl: pic ? resolveMediaUrl(pic) : '',
+    }
+    chatUserMiniCache.set(id, row)
+    return row
+  }
+  catch (e) {
+    console.warn('getChatUserDisplay', id, e)
+    const row = { name: 'User', username: '', avatarUrl: '' }
+    chatUserMiniCache.set(id, row)
+    return row
+  }
+}
+
+async function onChatHeaderIdentityClick() {
+  const c = active.value
+  if (!c) {
+    return
+  }
+  if (c.isGroup) {
+    unlockNotifyAudio()
+    groupDetailsOpen.value = true
+  }
+  else {
+    await openPeerProfile(c)
+  }
+}
+
+async function openUserProfileById(userId) {
+  const id = userId != null ? String(userId) : ''
+  if (!id) {
+    return
+  }
+  if (myUserId.value != null && String(myUserId.value) === id) {
+    const u = userStore.user?.username
+    if (u) {
+      await navigateTo({ name: 'MyProfile', params: { username: String(u) } })
+      return
+    }
+  }
+  await openPeerProfile({ peerUserId: id, username: '', name: 'User' })
+}
+
+async function ensureGroupSenderDisplay(userId) {
+  const id = userId != null ? String(userId) : ''
+  if (!id) {
+    return
+  }
+  if (groupSenderDisplayByUserId.value[id]) {
+    return
+  }
+  if (chatUserMiniCache.has(id)) {
+    const mini = chatUserMiniCache.get(id)
+    groupSenderDisplayByUserId.value = {
+      ...groupSenderDisplayByUserId.value,
+      [id]: {
+        name: mini.name,
+        avatarUrl: mini.avatarUrl,
+        username: mini.username,
+      },
+    }
+    return
+  }
+  const mini = await getChatUserDisplay(id)
+  groupSenderDisplayByUserId.value = {
+    ...groupSenderDisplayByUserId.value,
+    [id]: {
+      name: mini.name,
+      avatarUrl: mini.avatarUrl,
+      username: mini.username,
+    },
+  }
 }
 
 function toggleOutgoingReceiptDetail(messageId) {
@@ -762,11 +915,100 @@ function jumpToOriginalMessage(messageId) {
 }
 
 const messageListRef = ref(null)
+const groupDrawerRef = ref(null)
 
 watchEffect(() => {
   const root = messageListRef.value?.scrollRoot
   messagesScrollEl.value = root ?? null
 })
+
+function incomingAvatarKey(msg) {
+  if (active.value?.isGroup && !msg?.me && msg?.senderUserId != null) {
+    return String(msg.senderUserId)
+  }
+  return active.value?.id != null ? String(active.value.id) : 'peer'
+}
+
+function groupMessageSender(msg) {
+  const sid = msg?.senderUserId != null ? String(msg.senderUserId) : ''
+  if (!sid) {
+    return { name: 'Thành viên', avatarUrl: '' }
+  }
+  const row = groupSenderDisplayByUserId.value[sid]
+  if (row) {
+    return { name: row.name, avatarUrl: row.avatarUrl }
+  }
+  return { name: 'Thành viên', avatarUrl: '' }
+}
+
+function displayNameForGroupEvent(uid) {
+  const id = uid != null ? String(uid) : ''
+  if (!id) {
+    return 'Thành viên'
+  }
+  const row = groupSenderDisplayByUserId.value[id]
+  if (row?.name) {
+    return row.name
+  }
+  const c = chatUserMiniCache.get(id)
+  if (c?.name && String(c.name).trim()) {
+    return String(c.name).trim()
+  }
+  return 'Thành viên'
+}
+
+/** Tin hệ thống nhóm (kiểu Zalo) — có metadata.group_event + tên đã hydrate */
+function groupEventLineText(msg) {
+  const m = msg?.metadata
+  if (m?.kind !== 'group_event') {
+    return typeof msg?.text === 'string' ? msg.text : ''
+  }
+  const ev = m.event
+  const actorN = m.actorUserId ? displayNameForGroupEvent(m.actorUserId) : 'Quản trị viên'
+  const subjects = Array.isArray(m.subjectUserIds) ? m.subjectUserIds : []
+  const rawText = typeof msg?.text === 'string' ? msg.text : ''
+  switch (ev) {
+    case 'group_created':
+      return rawText
+    case 'members_added': {
+      if (!subjects.length) {
+        return rawText
+      }
+      const ns = subjects.map(id => displayNameForGroupEvent(id)).join(', ')
+      return `${actorN} đã mời ${ns} vào nhóm.`
+    }
+    case 'member_removed': {
+      const t = subjects[0]
+      return t ? `${actorN} đã xóa ${displayNameForGroupEvent(t)} khỏi nhóm.` : rawText
+    }
+    case 'member_left': {
+      const t = subjects[0]
+      return t ? `${displayNameForGroupEvent(t)} đã rời khỏi nhóm.` : rawText
+    }
+    case 'group_renamed': {
+      const nn = m.newGroupName
+      return nn ? `${actorN} đã đổi tên nhóm thành «${nn}».` : rawText
+    }
+    case 'group_avatar_changed':
+      return `${actorN} đã đổi ảnh đại diện nhóm.`
+    case 'admin_transferred': {
+      const na = m.newAdminUserId
+      return na
+        ? `${actorN} đã chuyển quyền quản trị cho ${displayNameForGroupEvent(na)}.`
+        : rawText
+    }
+    default:
+      return rawText
+  }
+}
+
+function openIncomingSenderProfile(msg) {
+  const sid = msg?.senderUserId != null ? String(msg.senderUserId) : ''
+  if (!sid) {
+    return
+  }
+  void openUserProfileById(sid)
+}
 
 const messageListApi = computed(() => ({
   timeLabel,
@@ -796,18 +1038,34 @@ const messageListApi = computed(() => ({
   toggleOutgoingReceiptDetail,
   shouldShowOutgoingReceipt,
   receiptLabel,
+  groupSeenDisplay,
+  incomingAvatarKey,
+  groupMessageSender,
+  openIncomingSenderProfile,
+  groupEventLineText,
 }))
 
 function shouldShowOutgoingReceipt(messages, messageId, conv) {
   if (messageId == null || !conv) {
     return false
   }
+  const mid = String(messageId)
+  const lastOwn = lastOwnUiMessageId(messages)
+  if (conv.isGroup) {
+    const msg = messages.find(m => String(m.id) === mid)
+    const hasSeen = Array.isArray(msg?.groupSeenByUserIds) && msg.groupSeenByUserIds.length > 0
+    if (!msg?.me && hasSeen) {
+      return receiptDetailForMessageId.value === mid
+    }
+    if (hasSeen) {
+      return lastOwn === mid || receiptDetailForMessageId.value === mid
+    }
+    return lastOwn != null && lastOwn === mid
+  }
   const label = outgoingMessageReceiptLabel(conv, messageId, myUserId.value)
   if (!label) {
     return false
   }
-  const mid = String(messageId)
-  const lastOwn = lastOwnUiMessageId(messages)
   if (lastOwn != null && lastOwn === mid) {
     return true
   }
@@ -885,6 +1143,299 @@ function initials(name) {
   return name.slice(0, 2).toUpperCase()
 }
 
+const groupSeenAvatarByUserId = ref({})
+const groupSeenAvatarFetched = new Set()
+
+async function ensureAvatarForSeenUser(uid) {
+  const id = String(uid)
+  if (!id || groupSeenAvatarFetched.has(id)) {
+    return
+  }
+  groupSeenAvatarFetched.add(id)
+  try {
+    const token = import.meta.client ? localStorage.getItem('token') : null
+    const res = await profileService.fetchByUserId(id, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    const raw = res?.data?.data ?? res?.data
+    const user = raw?.user ?? raw
+    const pic = user?.profile_picture
+    groupSeenAvatarByUserId.value = {
+      ...groupSeenAvatarByUserId.value,
+      [id]: pic ? resolveMediaUrl(pic) : '',
+    }
+  }
+  catch {
+    console.warn('ensureAvatarForSeenUser', id)
+    groupSeenAvatarByUserId.value = {
+      ...groupSeenAvatarByUserId.value,
+      [id]: '',
+    }
+  }
+}
+
+watch(
+  () => active.value?.messages,
+  (msgs) => {
+    if (!active.value?.isGroup || !Array.isArray(msgs)) {
+      return
+    }
+    for (const m of msgs) {
+      if (m?.metadata?.kind === 'group_event') {
+        const meta = m.metadata
+        const ids = []
+        if (meta.actorUserId) {
+          ids.push(String(meta.actorUserId))
+        }
+        if (Array.isArray(meta.subjectUserIds)) {
+          ids.push(...meta.subjectUserIds.map(String))
+        }
+        if (meta.newAdminUserId) {
+          ids.push(String(meta.newAdminUserId))
+        }
+        for (const uid of [...new Set(ids)]) {
+          void ensureGroupSenderDisplay(uid)
+        }
+      }
+    }
+    for (const m of msgs) {
+      if (!Array.isArray(m.groupSeenByUserIds) || !m.groupSeenByUserIds.length) {
+        continue
+      }
+      for (const uid of m.groupSeenByUserIds) {
+        void ensureAvatarForSeenUser(uid)
+      }
+    }
+    for (const m of msgs) {
+      if (m?.me || isSystemMessage(m)) {
+        continue
+      }
+      const sid = m?.senderUserId != null ? String(m.senderUserId) : ''
+      if (sid) {
+        void ensureGroupSenderDisplay(sid)
+      }
+    }
+  },
+  { deep: true },
+)
+
+function groupSeenDisplay(msg) {
+  if (!msg?.groupSeenByUserIds?.length) {
+    return []
+  }
+  return msg.groupSeenByUserIds.map((id) => {
+    const sid = String(id)
+    const url = groupSeenAvatarByUserId.value[sid] || ''
+    return {
+      id: sid,
+      url,
+      initials: initials(`U ${sid.replace(/-/g, '').slice(0, 6)}`),
+    }
+  })
+}
+
+const createGroupOpen = ref(false)
+const createGroupName = ref('')
+const createGroupSelectedUserIds = ref([])
+const createGroupMutualRows = ref([])
+const createGroupListLoading = ref(false)
+
+async function openCreateGroupModal() {
+  createGroupOpen.value = true
+  createGroupName.value = ''
+  createGroupSelectedUserIds.value = []
+  createGroupMutualRows.value = []
+  await Promise.all([
+    followStore.fetchFollowingList(),
+    followStore.fetchFollowersList(),
+  ])
+  const following = new Set(
+    (followStore.followingList || []).map(x => String(x)),
+  )
+  const ids = [...new Set(
+    (followStore.followersList || [])
+      .map(x => String(x))
+      .filter(id => following.has(id)),
+  )]
+  createGroupListLoading.value = true
+  try {
+    const token = import.meta.client ? localStorage.getItem('token') : null
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    const rows = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const res = await profileService.fetchByUserId(id, { headers })
+          const raw = res?.data?.data ?? res?.data
+          const user = raw?.user ?? raw
+          const name = (user?.name && String(user.name).trim()) || user?.username || 'User'
+          const username = user?.username ? String(user.username) : ''
+          const pic = user?.profile_picture
+          return {
+            id: String(id),
+            name,
+            username,
+            avatarUrl: pic ? resolveMediaUrl(pic) : '',
+          }
+        }
+        catch {
+          return {
+            id: String(id),
+            name: 'User',
+            username: '',
+            avatarUrl: '',
+          }
+        }
+      }),
+    )
+    rows.sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+    createGroupMutualRows.value = rows
+  }
+  finally {
+    createGroupListLoading.value = false
+  }
+}
+
+function toggleCreateGroupMember(userId) {
+  const id = String(userId)
+  const cur = createGroupSelectedUserIds.value.map(String)
+  const i = cur.indexOf(id)
+  if (i >= 0) {
+    createGroupSelectedUserIds.value = cur.filter(x => x !== id)
+  }
+  else {
+    createGroupSelectedUserIds.value = [...cur, id]
+  }
+}
+
+async function submitCreateGroup() {
+  const name = createGroupName.value.trim()
+  if (!name) {
+    notification.warning({ message: 'Nhập tên nhóm' })
+    return
+  }
+  const picked = createGroupSelectedUserIds.value.map(String)
+  if (picked.length < 2) {
+    notification.warning({
+      message: 'Chọn ít nhất 2 người',
+      description: 'Nhóm cần tối thiểu 3 người gồm bạn và hai người bạn follow lẫn nhau.',
+    })
+    return
+  }
+  try {
+    const res = await chatApi.createGroup({
+      groupName: name,
+      participantIds: picked,
+    })
+    const d = unwrapChatData(res)
+    const raw = d && typeof d === 'object' && 'conversation' in d ? d.conversation : d
+    const id = raw && raw.id != null ? String(raw.id) : ''
+    if (id) {
+      await loadConversationList()
+      selectConversation(id)
+    }
+    createGroupOpen.value = false
+    notification.success({ message: 'Đã tạo nhóm' })
+  }
+  catch (e) {
+    console.error('createGroup', e)
+    notification.error({
+      message: 'Tạo nhóm',
+      description: e?.response?.data?.message || e?.message || 'Không tạo được nhóm.',
+    })
+  }
+}
+
+async function hydrateGroupDetailMemberRows() {
+  const c = active.value
+  if (!c?.isGroup || !Array.isArray(c.participants)) {
+    groupDetailMemberRows.value = []
+    return
+  }
+  groupMembersHydrateLoading.value = true
+  try {
+    const mine = myUserId.value != null ? String(myUserId.value) : ''
+    const adminId = c.adminUserId != null ? String(c.adminUserId) : ''
+    const rows = []
+    for (const p of c.participants) {
+      if (!p?.userId) {
+        continue
+      }
+      const uid = String(p.userId)
+      const mini = await getChatUserDisplay(uid)
+      rows.push({
+        userId: uid,
+        name: mini.name,
+        username: mini.username,
+        avatarUrl: mini.avatarUrl,
+        initials: initials(mini.name || 'U'),
+        isAdmin: uid === adminId || p.role === 'admin',
+        hasLeft: Boolean(p.leftAt),
+        removedByAdmin: Boolean(p.removedByAdminAt),
+        isSelf: mine !== '' && uid === mine,
+      })
+    }
+    rows.sort((a, b) => {
+      if (a.hasLeft !== b.hasLeft) {
+        return a.hasLeft ? 1 : -1
+      }
+      return a.name.localeCompare(b.name, 'vi')
+    })
+    groupDetailMemberRows.value = rows
+  }
+  finally {
+    groupMembersHydrateLoading.value = false
+  }
+}
+
+async function buildAddMemberCandidateList() {
+  const c = active.value
+  addMemberCandidates.value = []
+  if (!c?.isGroup) {
+    return
+  }
+  if (!c.adminUserId || String(c.adminUserId) !== String(myUserId.value)) {
+    return
+  }
+  addMembersListLoading.value = true
+  try {
+    await Promise.all([
+      followStore.fetchFollowingList(),
+      followStore.fetchFollowersList(),
+    ])
+    const following = new Set(
+      (followStore.followingList || []).map(x => String(x)),
+    )
+    const mine = myUserId.value != null ? String(myUserId.value) : ''
+    const mutualIds = [...new Set(
+      (followStore.followersList || [])
+        .map(x => String(x))
+        .filter(id => id !== mine && following.has(id)),
+    )]
+    const activeIds = new Set(
+      (c.participants || [])
+        .filter(p => p && !p.leftAt)
+        .map(p => String(p.userId)),
+    )
+    const candidateIds = mutualIds.filter(id => !activeIds.has(id))
+    const rows = await Promise.all(
+      candidateIds.map(async (id) => {
+        const mini = await getChatUserDisplay(id)
+        return {
+          id: String(id),
+          name: mini.name,
+          username: mini.username,
+          avatarUrl: mini.avatarUrl,
+        }
+      }),
+    )
+    rows.sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+    addMemberCandidates.value = rows
+  }
+  finally {
+    addMembersListLoading.value = false
+  }
+}
+
 const fallbackTint = ['bg-[#1877f2]', 'bg-[#166fe5]', 'bg-[#1464d4]']
 
 function fallbackClass(id) {
@@ -896,9 +1447,291 @@ function fallbackClass(id) {
   return fallbackTint[n % fallbackTint.length]
 }
 
+function onConversationDissolved(payload) {
+  const cid = payload?.conversationId != null ? String(payload.conversationId) : ''
+  if (!cid) {
+    return
+  }
+  conversations.value = conversations.value.filter(c => c.id !== cid)
+  if (String(selectedId.value) === cid) {
+    selectedId.value = null
+    mobileShowThread.value = false
+  }
+  scheduleRefreshFolderUnreadTotals()
+}
+
+function confirmTitleHtml(text) {
+  return new Promise((resolve) => {
+    Modal.confirm({
+      title: text,
+      okText: 'Xác nhận',
+      cancelText: 'Hủy',
+      onOk: () => resolve(true),
+      onCancel: () => resolve(false),
+    })
+  })
+}
+
+async function onRemoveGroupMember(userId) {
+  const cid = active.value?.id
+  const uid = userId != null ? String(userId).trim() : ''
+  if (!cid || !uid || !active.value?.isGroup) {
+    return
+  }
+  const ok = await confirmTitleHtml(
+    'Xóa thành viên khỏi nhóm? Họ chỉ xem được tin tới thời điểm này và không thấy tin nhắn sau đó, trừ khi được mời lại.',
+  )
+  if (!ok) {
+    return
+  }
+  try {
+    await chatApi.removeGroupMember(cid, uid)
+    notification.success({ message: 'Đã xóa thành viên' })
+    await handleGroupConversationRefresh(cid)
+    await loadConversationList()
+  }
+  catch (e) {
+    console.error('removeGroupMember', e)
+    notification.error({
+      message: 'Xóa thành viên',
+      description: e?.response?.data?.message || 'Không thực hiện được.',
+    })
+  }
+}
+
+async function onLeaveGroupClick() {
+  const cid = active.value?.id
+  if (!cid || !active.value?.isGroup) {
+    return false
+  }
+  const ok = await confirmTitleHtml('Rời nhóm? Bạn vẫn xem được tin nhắn cũ.')
+  if (!ok) {
+    return false
+  }
+  try {
+    await chatApi.leaveGroup(cid)
+    notification.success({ message: 'Đã rời nhóm' })
+    await loadConversationList()
+    if (String(selectedId.value) === String(cid)) {
+      await refreshPinnedMessages(cid)
+      await fetchMessagingEligibility(cid)
+    }
+    return true
+  }
+  catch (e) {
+    console.error('leaveGroup', e)
+    notification.error({
+      message: 'Rời nhóm',
+      description: e?.response?.data?.message || 'Không thực hiện được.',
+    })
+    return false
+  }
+}
+
+async function onDissolveGroupClick() {
+  const cid = active.value?.id
+  if (!cid || !active.value?.isGroup) {
+    return false
+  }
+  const ok = await confirmTitleHtml(
+    'Giải tán nhóm? Toàn bộ tin nhắn sẽ bị xóa vĩnh viễn.',
+  )
+  if (!ok) {
+    return false
+  }
+  try {
+    await chatApi.dissolveGroup(cid)
+    notification.success({ message: 'Đã giải tán nhóm' })
+    onConversationDissolved({ conversationId: cid })
+    return true
+  }
+  catch (e) {
+    console.error('dissolveGroup', e)
+    notification.error({
+      message: 'Giải tán nhóm',
+      description: e?.response?.data?.message || 'Không thực hiện được.',
+    })
+    return false
+  }
+}
+
+async function handleGroupConversationRefresh(conversationId) {
+  const id = conversationId != null ? String(conversationId) : ''
+  if (!id) {
+    return
+  }
+  await refreshPinnedMessages(id)
+  if (String(selectedId.value) === id) {
+    await fetchMessagingEligibility(id)
+    if (groupDetailsOpen.value && active.value?.isGroup) {
+      await Promise.all([
+        hydrateGroupDetailMemberRows(),
+        buildAddMemberCandidateList(),
+      ])
+    }
+  }
+  scheduleRefreshFolderUnreadTotals()
+}
+
+function onGroupSocketUpdated(payload) {
+  void handleGroupConversationRefresh(payload?.conversationId)
+}
+
+function onGroupSocketAdminTransferred(payload) {
+  void handleGroupConversationRefresh(payload?.conversationId)
+}
+
+function onGroupSocketMemberLeft(payload) {
+  void handleGroupConversationRefresh(payload?.conversationId)
+}
+
+async function onDrawerSaveGroupName(name) {
+  const cid = active.value?.id
+  const n = typeof name === 'string' ? name.trim() : ''
+  if (!cid || !n || !active.value?.isGroup) {
+    return
+  }
+  try {
+    await chatApi.patchGroup(cid, { groupName: n })
+    const c = active.value
+    c.groupName = n
+    c.name = n
+    await refreshPinnedMessages(cid)
+    await loadConversationList()
+    notification.success({ message: 'Đã cập nhật tên nhóm' })
+  }
+  catch (e) {
+    console.error('patchGroup name', e)
+    notification.error({
+      message: 'Tên nhóm',
+      description: e?.response?.data?.message || 'Không lưu được.',
+    })
+  }
+}
+
+async function onDrawerGroupAvatarPicked(file) {
+  const cid = active.value?.id
+  if (!cid || !active.value?.isGroup || !(file instanceof File)) {
+    return
+  }
+  const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+  if (!allowed.includes(file.type)) {
+    notification.error({
+      message: 'Ảnh nhóm',
+      description: 'Chọn JPEG, PNG, GIF hoặc WebP.',
+    })
+    return
+  }
+  try {
+    const res = await chatApi.presignChatImageUpload(cid, {
+      contentType: file.type,
+      fileName: file.name,
+    })
+    const presign = unwrapChatData(res)
+    const put = await fetch(presign.uploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type },
+    })
+    if (!put.ok) {
+      throw new Error(`Upload ${put.status}`)
+    }
+    await chatApi.patchGroup(cid, { groupAvatarObjectKey: presign.objectKey })
+    await refreshPinnedMessages(cid)
+    await loadConversationList()
+    notification.success({ message: 'Đã cập nhật ảnh nhóm' })
+  }
+  catch (e) {
+    console.error('group avatar', e)
+    notification.error({
+      message: 'Ảnh nhóm',
+      description: e?.response?.data?.message || e?.message || 'Không tải được ảnh.',
+    })
+  }
+}
+
+async function onDrawerAddGroupMembers(userIds) {
+  const cid = active.value?.id
+  if (!cid || !Array.isArray(userIds) || !userIds.length) {
+    return
+  }
+  addMembersSubmitLoading.value = true
+  try {
+    await chatApi.addGroupMembers(cid, userIds)
+    notification.success({ message: 'Đã thêm thành viên' })
+    groupDrawerRef.value?.closeAddMembersModal?.()
+    await refreshPinnedMessages(cid)
+    await loadConversationList()
+    await Promise.all([
+      hydrateGroupDetailMemberRows(),
+      buildAddMemberCandidateList(),
+    ])
+  }
+  catch (e) {
+    console.error('addGroupMembers', e)
+    notification.error({
+      message: 'Thêm thành viên',
+      description: e?.response?.data?.message || 'Không thêm được.',
+    })
+  }
+  finally {
+    addMembersSubmitLoading.value = false
+  }
+}
+
+async function runTransferAdmin(newAdminUserId) {
+  const cid = active.value?.id
+  const tid = newAdminUserId != null ? String(newAdminUserId) : ''
+  if (!cid || !tid) {
+    notification.warning({ message: 'Chọn thành viên nhận quyền admin' })
+    return
+  }
+  try {
+    await chatApi.transferGroupAdmin(cid, tid)
+    notification.success({ message: 'Đã chuyển quyền admin' })
+    await loadConversationList()
+    await refreshPinnedMessages(cid)
+    await fetchMessagingEligibility(cid)
+    await hydrateGroupDetailMemberRows()
+    await buildAddMemberCandidateList()
+  }
+  catch (e) {
+    console.error('transferAdmin', e)
+    notification.error({
+      message: 'Chuyển quyền',
+      description: e?.response?.data?.message || 'Không thực hiện được.',
+    })
+  }
+}
+
+async function onLeaveGroupFromDrawer() {
+  const done = await onLeaveGroupClick()
+  if (done) {
+    groupDetailsOpen.value = false
+  }
+}
+
+async function onDissolveGroupFromDrawer() {
+  const done = await onDissolveGroupClick()
+  if (done) {
+    groupDetailsOpen.value = false
+  }
+}
+
+watch(groupDetailsOpen, (open) => {
+  if (open && active.value?.isGroup) {
+    void Promise.all([
+      hydrateGroupDetailMemberRows(),
+      buildAddMemberCandidateList(),
+    ])
+  }
+})
+
 let socketConnectJoin = () => {}
 
 watch(selectedId, async (id, oldId) => {
+  groupDetailsOpen.value = false
+  groupSenderDisplayByUserId.value = {}
   receiptDetailForMessageId.value = null
   messageActionMenuId.value = null
   messageActionHoverId.value = null
@@ -962,6 +1795,26 @@ watch(
   { immediate: true },
 )
 
+function resolveSocketConnectJoin() {
+  if (selectedId.value) {
+    emitRoomJoin(selectedId.value)
+    nextTick(() => {
+      const cid = selectedId.value
+      if (cid) {
+        scheduleMarkReadForOpenConversation(String(cid))
+      }
+    })
+  }
+}
+
+function onConversationAdded(payload) {
+  const raw = payload?.conversation
+  if (!raw?.id) {
+    return
+  }
+  mergeConversationFromRealtime(raw)
+}
+
 onMounted(async () => {
   mountNotifyUnlock()
   await userStore.fetchUserData()
@@ -974,18 +1827,13 @@ onMounted(async () => {
     s.on('message:updated', onMessageUpdated)
     s.on('conversation:read', onConversationRead)
     s.on('conversation:pins-updated', onConversationPinsUpdated)
+    s.on('conversation:dissolved', onConversationDissolved)
+    s.on('conversation:added', onConversationAdded)
+    s.on('group:updated', onGroupSocketUpdated)
+    s.on('group:admin-transferred', onGroupSocketAdminTransferred)
+    s.on('group:member-left', onGroupSocketMemberLeft)
     s.on('presence:update', onPresenceUpdate)
-    socketConnectJoin = () => {
-      if (selectedId.value) {
-        emitRoomJoin(selectedId.value)
-        nextTick(() => {
-          const cid = selectedId.value
-          if (cid) {
-            scheduleMarkReadForOpenConversation(String(cid))
-          }
-        })
-      }
-    }
+    socketConnectJoin = resolveSocketConnectJoin
     s.on('connect', socketConnectJoin)
   }
   if (selectedId.value) {
@@ -1012,6 +1860,11 @@ onUnmounted(() => {
     s.off('message:updated', onMessageUpdated)
     s.off('conversation:read', onConversationRead)
     s.off('conversation:pins-updated', onConversationPinsUpdated)
+    s.off('conversation:dissolved', onConversationDissolved)
+    s.off('conversation:added', onConversationAdded)
+    s.off('group:updated', onGroupSocketUpdated)
+    s.off('group:admin-transferred', onGroupSocketAdminTransferred)
+    s.off('group:member-left', onGroupSocketMemberLeft)
     s.off('presence:update', onPresenceUpdate)
     s.off('connect', socketConnectJoin)
   }
@@ -1180,6 +2033,7 @@ onUnmounted(() => {
           @select="selectConversation"
           @open-profile="openPeerProfile"
           @avatar-error="markAvatarBroken"
+          @new-group="openCreateGroupModal"
         />
 
         <section
@@ -1201,54 +2055,68 @@ onUnmounted(() => {
                     <i class="fa-solid fa-chevron-left text-[15px]" />
                   </button>
                   <div
-                    class="relative h-12 w-12 shrink-0 cursor-pointer"
+                    class="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl py-0.5 pr-1 transition hover:bg-zinc-50/80"
                     role="button"
                     tabindex="0"
-                    aria-label="Open profile"
-                    @click.stop.prevent="openPeerProfile(active)"
-                    @keydown.enter.stop.prevent="openPeerProfile(active)"
+                    :aria-label="active.isGroup ? 'Thông tin nhóm' : 'Xem hồ sơ'"
+                    @click.stop.prevent="onChatHeaderIdentityClick"
+                    @keydown.enter.stop.prevent="onChatHeaderIdentityClick"
                   >
-                    <img
-                      v-if="!isAvatarBroken(active.id)"
-                      :src="active.peerAvatarUrl || defaultAvatarUrl"
-                      alt=""
-                      width="48"
-                      height="48"
-                      class="h-12 w-12 rounded-full object-cover ring-1 ring-zinc-200/80"
-                      loading="eager"
-                      decoding="async"
-                      fetchpriority="high"
-                      @error="markAvatarBroken(active.id)"
-                    >
-                    <div
-                      v-else
-                      class="flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm ring-1 ring-zinc-200/80"
-                      :class="fallbackClass(active.id)"
-                    >
-                      {{ initials(active.name) }}
+                    <div class="relative h-12 w-12 shrink-0">
+                      <img
+                        v-if="!isAvatarBroken(active.id)"
+                        :src="active.peerAvatarUrl || defaultAvatarUrl"
+                        alt=""
+                        width="48"
+                        height="48"
+                        class="h-12 w-12 rounded-full object-cover ring-1 ring-zinc-200/80"
+                        loading="eager"
+                        decoding="async"
+                        fetchpriority="high"
+                        @error="markAvatarBroken(active.id)"
+                      >
+                      <div
+                        v-else
+                        class="flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm ring-1 ring-zinc-200/80"
+                        :class="fallbackClass(active.id)"
+                      >
+                        {{ initials(active.name) }}
+                      </div>
+                    </div>
+                    <div class="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+                      <p class="truncate text-[17px] font-semibold leading-tight text-zinc-900">
+                        {{ active.name }}
+                      </p>
+                      <p
+                        v-if="active.isGroup"
+                        class="truncate text-[13px] leading-tight text-zinc-500"
+                      >
+                        Nhóm chat
+                        <template v-if="String(active.adminUserId) === String(myUserId)">
+                          · Bạn là quản trị viên
+                        </template>
+                      </p>
+                      <p
+                        v-else-if="active.online"
+                        class="text-[13px] font-normal leading-tight text-[#1877f2]"
+                      >
+                        <span aria-hidden="true">• </span>Active now
+                      </p>
+                      <p
+                        v-else-if="peerLastSeenSubtitle(active)"
+                        class="truncate text-[13px] leading-tight text-zinc-500"
+                      >
+                        {{ peerLastSeenSubtitle(active) }}
+                      </p>
+                      <p
+                        v-else
+                        class="truncate text-[13px] leading-tight text-zinc-500"
+                      >
+                        @{{ active.username }}
+                      </p>
                     </div>
                   </div>
-                  <div class="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-                    <p class="truncate text-[17px] font-semibold leading-tight text-zinc-900">
-                      {{ active.name }}
-                    </p>
-                    <p
-                      v-if="active.online"
-                      class="text-[13px] font-normal leading-tight text-[#1877f2]"
-                    >
-                      <span aria-hidden="true">• </span>Active now
-                    </p>
-                    <p
-                      v-else-if="peerLastSeenSubtitle(active)"
-                      class="truncate text-[13px] leading-tight text-zinc-500"
-                    >
-                      {{ peerLastSeenSubtitle(active) }}
-                    </p>
-                    <p v-else class="truncate text-[13px] leading-tight text-zinc-500">
-                      @{{ active.username }}
-                    </p>
-                  </div>
-                  <div class="ml-auto flex items-center gap-2">
+                  <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
                     <button
                       type="button"
                       class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-[#1877f2]"
@@ -1263,7 +2131,7 @@ onUnmounted(() => {
                       type="button"
                       class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-[#1877f2]"
                       aria-label="Audio call"
-                      :disabled="isCalling || !messagingAllowed"
+                      :disabled="isCalling || !messagingAllowed || active.isGroup"
                       @click="startAudioCall"
                     >
                       <i class="fa-solid fa-phone text-[15px]" />
@@ -1272,7 +2140,7 @@ onUnmounted(() => {
                       type="button"
                       class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-[#1877f2]"
                       aria-label="Video call"
-                      :disabled="isCalling || !messagingAllowed"
+                      :disabled="isCalling || !messagingAllowed || active.isGroup"
                       @click="startVideoCall"
                     >
                       <i class="fa-solid fa-video text-[15px]" />
@@ -1359,6 +2227,114 @@ onUnmounted(() => {
       </div>
     </div>
   </div>
+  <a-modal
+    v-model:open="createGroupOpen"
+    title="Tạo nhóm chat"
+    ok-text="Tạo nhóm"
+    cancel-text="Hủy"
+    :width="420"
+    destroy-on-close
+    @ok="submitCreateGroup"
+  >
+    <p class="mb-2 text-[13px] text-zinc-500">
+      Danh sách bên dưới là những người <strong>bạn follow và họ cũng follow lại bạn</strong>.
+      Chọn ít nhất hai người để tạo nhóm (tối thiểu 3 người gồm cả bạn).
+    </p>
+    <label class="mb-3 block text-[13px] font-medium text-zinc-700">Tên nhóm</label>
+    <a-input
+      v-model:value="createGroupName"
+      placeholder="Ví dụ: Team design"
+      class="mb-4"
+      max-length="120"
+    />
+    <p class="mb-2 text-[13px] font-medium text-zinc-700">
+      Thành viên ({{ createGroupSelectedUserIds.length }} đã chọn)
+    </p>
+    <ul
+      class="max-h-52 overflow-y-auto rounded-lg border border-zinc-200 divide-y divide-zinc-100"
+    >
+      <li
+        v-if="createGroupListLoading"
+        class="px-3 py-8 text-center text-[13px] text-zinc-500"
+      >
+        Đang tải danh sách…
+      </li>
+      <template v-else>
+        <li
+          v-for="row in createGroupMutualRows"
+          :key="row.id"
+          class="flex items-center gap-3 px-3 py-2.5"
+        >
+          <input
+            :id="`g-${row.id}`"
+            type="checkbox"
+            class="h-4 w-4 shrink-0 rounded border-zinc-300"
+            :checked="createGroupSelectedUserIds.includes(row.id)"
+            @change="toggleCreateGroupMember(row.id)"
+          >
+          <label
+            :for="`g-${row.id}`"
+            class="flex min-w-0 flex-1 cursor-pointer items-center gap-3"
+          >
+            <img
+              v-if="row.avatarUrl"
+              :src="row.avatarUrl"
+              alt=""
+              width="36"
+              height="36"
+              class="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-zinc-200/80"
+              loading="lazy"
+              decoding="async"
+            >
+            <div
+              v-else
+              class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ring-1 ring-zinc-200/80"
+              :class="fallbackClass(row.id)"
+            >
+              {{ initials(row.name) }}
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-[14px] font-semibold text-zinc-900">
+                {{ row.name }}
+              </p>
+              <p
+                v-if="row.username"
+                class="truncate text-[12px] text-zinc-500"
+              >
+                @{{ row.username }}
+              </p>
+            </div>
+          </label>
+        </li>
+        <li
+          v-if="createGroupMutualRows.length === 0"
+          class="px-3 py-6 text-center text-[13px] text-zinc-500"
+        >
+          Chưa có ai follow lẫn nhau với bạn. Hãy follow và được follow lại để tạo nhóm.
+        </li>
+      </template>
+    </ul>
+  </a-modal>
+  <ChatGroupDetailsDrawer
+    v-if="active?.isGroup"
+    ref="groupDrawerRef"
+    v-model:open="groupDetailsOpen"
+    :loading="groupDrawerContentLoading"
+    :conversation="active"
+    :member-rows="groupDetailMemberRows"
+    :my-user-id="myUserId"
+    :default-avatar-url="defaultAvatarUrl"
+    :add-member-candidates="addMemberCandidates"
+    :add-members-loading="addMembersSubmitLoading"
+    @save-name="onDrawerSaveGroupName"
+    @pick-avatar-file="onDrawerGroupAvatarPicked"
+    @leave="onLeaveGroupFromDrawer"
+    @dissolve="onDissolveGroupFromDrawer"
+    @transfer="runTransferAdmin"
+    @add-members="onDrawerAddGroupMembers"
+    @remove-member="onRemoveGroupMember"
+    @open-user="openUserProfileById"
+  />
 </template>
 
 <style scoped>

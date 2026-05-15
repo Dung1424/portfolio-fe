@@ -1,4 +1,5 @@
 import { normalizeParticipantReceipts } from '~/features/chat/utils/chatReceipts.js'
+import { isCallLogMessage } from '~/features/chat/utils/chatCallLog.js'
 
 export const MESSAGES_CHUNK_SIZE = 20
 
@@ -20,7 +21,8 @@ export function normalizeLastPreviewObject(p) {
   }
   return {
     text: p.text ?? '',
-    senderUserId: p.senderUserId != null ? String(p.senderUserId) : null
+    senderUserId: p.senderUserId != null ? String(p.senderUserId) : null,
+    messageType: typeof p.messageType === 'string' ? p.messageType : null,
   }
 }
 
@@ -39,14 +41,34 @@ export function mapApiConversationToUi(apiConv, myUserIdVal) {
   const peerId = peerUserIdFromParticipants(apiConv.participants, myUserIdVal)
   const last = lastPreviewText(apiConv)
   const t = apiConv.lastMessageAt || apiConv.updatedAt
+  const typ = apiConv.type ?? 'direct'
+  const isGroup = typ === 'group'
+  const gName = typeof apiConv.groupName === 'string' ? apiConv.groupName.trim() : ''
+  const gAvatar = typeof apiConv.groupAvatarUrl === 'string' ? apiConv.groupAvatarUrl.trim() : ''
+  const displayName = isGroup
+    ? (gName || 'Nhóm')
+    : (peerId ? `User ${String(peerId).replace(/-/g, '').slice(0, 8)}` : 'Chat')
   return {
     id: String(apiConv.id),
-    type: apiConv.type ?? 'direct',
+    type: typ,
+    isGroup,
+    groupName: gName,
+    groupAvatarUrl: gAvatar || '',
+    adminUserId: apiConv.adminUserId != null ? String(apiConv.adminUserId) : null,
+    viewerRole: apiConv.viewerRole ?? null,
+    viewerHasLeft: Boolean(apiConv.viewerHasLeft),
+    viewerRemovedByAdmin: Boolean(apiConv.viewerRemovedByAdmin),
+    viewerHistoryVisibleUpToMessageId:
+      apiConv.viewerHistoryVisibleUpToMessageId != null
+        ? String(apiConv.viewerHistoryVisibleUpToMessageId)
+        : null,
+    canSendMessages:
+      !isGroup || apiConv.canSendMessages !== false,
     peerUserId: peerId,
-    name: peerId ? `User ${String(peerId).replace(/-/g, '').slice(0, 8)}` : 'Chat',
-    username: 'user',
-    peerAvatarUrl: '',
-    peerProfileLoaded: false,
+    name: displayName,
+    username: isGroup ? 'group' : 'user',
+    peerAvatarUrl: isGroup ? (gAvatar || '') : '',
+    peerProfileLoaded: isGroup ? Boolean(gAvatar) : false,
     lastMessage: last,
     lastMessageId: apiConv.lastMessageId != null ? String(apiConv.lastMessageId) : null,
     lastMessagePreview: normalizeLastPreviewObject(apiConv.lastMessagePreview),
@@ -58,7 +80,8 @@ export function mapApiConversationToUi(apiConv, myUserIdVal) {
     messagesLoaded: false,
     messagesNextCursor: null,
     participantReceipts: normalizeParticipantReceipts(apiConv.participantReceipts),
-    pinnedMessages: Array.isArray(apiConv.pinnedMessages) ? apiConv.pinnedMessages : []
+    pinnedMessages: Array.isArray(apiConv.pinnedMessages) ? apiConv.pinnedMessages : [],
+    participants: Array.isArray(apiConv.participants) ? apiConv.participants : [],
   }
 }
 
@@ -105,10 +128,12 @@ export function mapApiMessageToUi(raw, myId) {
   if (isSticker && !text) {
     text = '[Sticker]'
   }
+  const isGroupEvent = metadata?.kind === 'group_event'
+  const msgType = raw?.type === 'system' || isGroupEvent ? 'system' : 'text'
   return {
     id: String(raw?.id ?? `msg-${Date.now()}`),
     senderUserId,
-    type: raw?.type === 'system' ? 'system' : 'text',
+    type: msgType,
     text,
     imageUrl,
     isSticker,
@@ -119,7 +144,10 @@ export function mapApiMessageToUi(raw, myId) {
     recalledAt,
     recalledByUserId,
     replyToMessageId: raw?.replyToMessageId != null ? String(raw.replyToMessageId) : null,
-    replyPreview: raw?.replyPreview ?? null
+    replyPreview: raw?.replyPreview ?? null,
+    groupSeenByUserIds: Array.isArray(raw?.groupSeenByUserIds)
+      ? raw.groupSeenByUserIds.map(x => String(x))
+      : []
   }
 }
 
@@ -162,9 +190,14 @@ export function bumpConversationRowFromMessage(conv, raw, ui) {
   if (rid != null) {
     conv.lastMessageId = String(rid)
   }
+  let messageType = 'text'
+  if (ui?.type === 'system' || ui?.metadata?.kind === 'group_event') {
+    messageType = isCallLogMessage(ui) ? 'call_log' : 'system'
+  }
   conv.lastMessagePreview = {
     text: preview,
-    senderUserId: raw?.senderUserId != null ? String(raw.senderUserId) : null
+    senderUserId: raw?.senderUserId != null ? String(raw.senderUserId) : null,
+    messageType,
   }
 }
 

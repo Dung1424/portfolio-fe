@@ -63,7 +63,11 @@ export function useChatConversationList(selectedId, mobileShowThread) {
   }
 
   async function enrichAllConversationPeers(list) {
-    const ids = [...new Set(list.map(c => c.peerUserId).filter(Boolean))]
+    const ids = [
+      ...new Set(
+        list.filter(c => !c.isGroup).map(c => c.peerUserId).filter(Boolean),
+      ),
+    ]
     await Promise.all(
       ids.map(async (pid) => {
         const user = await fetchPeerProfile(String(pid))
@@ -80,7 +84,11 @@ export function useChatConversationList(selectedId, mobileShowThread) {
   }
 
   async function applyPresenceToConversations(list) {
-    const ids = [...new Set(list.map(c => c.peerUserId).filter(Boolean))]
+    const ids = [
+      ...new Set(
+        list.filter(c => !c.isGroup).map(c => c.peerUserId).filter(Boolean),
+      ),
+    ]
     if (!ids.length) {
       return
     }
@@ -118,6 +126,9 @@ export function useChatConversationList(selectedId, mobileShowThread) {
     const online = Boolean(payload?.online)
     const ls = payload?.lastSeenAt
     for (const c of conversations.value) {
+      if (c.isGroup) {
+        continue
+      }
       if (String(c.peerUserId) === uid) {
         c.online = online
         if (online) {
@@ -249,6 +260,36 @@ export function useChatConversationList(selectedId, mobileShowThread) {
     folderUnreadDebounceTimer = null
   }
 
+  /**
+   * Khi socket `conversation:added` — ghép cuộc trò chuyện vào sidebar mà không reload.
+   * Giữ nguyên tin nhắn đã tải nếu cuộc đã có trong list.
+   */
+  function mergeConversationFromRealtime(raw) {
+    if (!raw?.id) {
+      return
+    }
+    const my = userStore.user?.id
+    const incoming = mapApiConversationToUi(raw, my)
+    const cid = String(incoming.id)
+    const idx = conversations.value.findIndex(c => c.id === cid)
+    if (idx === -1) {
+      conversations.value.unshift(incoming)
+      void enrichAllConversationPeers([incoming])
+      void applyPresenceToConversations([incoming])
+      scheduleRefreshFolderUnreadTotals()
+      return
+    }
+    const existing = conversations.value[idx]
+    const preserve = {
+      messages: existing.messages,
+      messagesLoaded: existing.messagesLoaded,
+      messagesNextCursor: existing.messagesNextCursor,
+      pinnedMessages: existing.pinnedMessages,
+    }
+    Object.assign(existing, incoming, preserve)
+    scheduleRefreshFolderUnreadTotals()
+  }
+
   return {
     conversations,
     listFolder,
@@ -265,5 +306,6 @@ export function useChatConversationList(selectedId, mobileShowThread) {
     refreshFolderUnreadTotals,
     scheduleRefreshFolderUnreadTotals,
     clearFolderUnreadDebounce,
+    mergeConversationFromRealtime,
   }
 }
