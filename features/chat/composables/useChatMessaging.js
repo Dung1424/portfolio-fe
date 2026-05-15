@@ -5,13 +5,15 @@ import {
   mergeParticipantReceiptsFromEnvelope,
   patchParticipantReceipts
 } from '~/features/chat/utils/chatReceipts.js'
-import { isMongoObjectIdString } from '~/features/chat/utils/chatObjectId.js'
+import { compareMongoObjectIdHex, isMongoObjectIdString, messageIdAtOrBeforeWatermark } from '~/features/chat/utils/chatObjectId.js'
 import {
   MESSAGES_CHUNK_SIZE,
   bumpConversationRowFromMessage,
+  lastPreviewText,
   mapApiMessageToUi,
   nextMessagesCursorFromData,
-  sortMessagesByTimeAsc
+  normalizeLastPreviewObject,
+  sortMessagesByTimeAsc,
 } from '~/features/chat/utils/chatMappers.js'
 
 /**
@@ -50,6 +52,50 @@ export function useChatMessaging(
     conversations.value.find(c => c.id === selectedId.value) ?? null
   )
 
+  /**
+   * Mỗi người xem chỉ một avatar: trên **tin mới nhất trong thread** (mọi người gửi)
+   * có id ≤ lastReadMessageId của họ — đúng với “đọc tới đâu” trong hội thoại,
+   * không kẹt ở tin cuối của **chính viewer** khi người khác đã nhắn tin mới hơn.
+   */
+  function refreshGroupSeenAvatarsOnConv(conv) {
+    const my = unref(myUserId)
+    if (!conv?.isGroup || !Array.isArray(conv.messages) || my == null) {
+      return
+    }
+    const receipts = Array.isArray(conv.participantReceipts) ? conv.participantReceipts : []
+    const myS = String(my)
+    for (const m of conv.messages) {
+      m.groupSeenByUserIds = []
+    }
+    for (const r of receipts) {
+      const rid = r?.userId != null ? String(r.userId) : ''
+      if (!rid || rid === myS) {
+        continue
+      }
+      const lr = r.lastReadMessageId
+      if (!lr) {
+        continue
+      }
+      const lrS = String(lr)
+      for (let i = conv.messages.length - 1; i >= 0; i--) {
+        const m = conv.messages[i]
+        if (m.recalledAt || m.type === 'system') {
+          continue
+        }
+        const mid = String(m.id)
+        if (messageIdAtOrBeforeWatermark(mid, lrS)) {
+          if (!Array.isArray(m.groupSeenByUserIds)) {
+            m.groupSeenByUserIds = []
+          }
+          if (!m.groupSeenByUserIds.includes(rid)) {
+            m.groupSeenByUserIds.push(rid)
+          }
+          break
+        }
+      }
+    }
+  }
+
   function clearReadDebounceTimer() {
     clearTimeout(readDebounceTimer)
     readDebounceTimer = null
@@ -83,6 +129,7 @@ export function useChatMessaging(
         conv.unreadCount = data.readerUnreadCount
       }
       mergeParticipantReceiptsFromEnvelope(conv, data)
+      refreshGroupSeenAvatarsOnConv(conv)
       lastReadWatermarkByConvId.set(conv.id, mid)
       scheduleRefreshFolderUnreadTotals()
     } catch (e) {
@@ -140,10 +187,66 @@ export function useChatMessaging(
     if (!c) {
       return
     }
+    const wasGroupViewerOut = c.type === 'group' && Boolean(c.viewerHasLeft)
     try {
       const res = await chatApi.getConversation(cid)
       const d = unwrapChatData(res)
       c.pinnedMessages = Array.isArray(d.pinnedMessages) ? d.pinnedMessages : []
+      if (d?.type === 'group') {
+        const gn = typeof d.groupName === 'string' ? d.groupName.trim() : ''
+        if (gn) {
+          c.groupName = gn
+          c.name = gn
+        }
+        if (typeof d.groupAvatarUrl === 'string' && d.groupAvatarUrl) {
+          c.groupAvatarUrl = d.groupAvatarUrl
+          c.peerAvatarUrl = d.groupAvatarUrl
+        }
+        if (typeof d.adminUserId === 'string') {
+          c.adminUserId = d.adminUserId
+        }
+        c.viewerRole = d.viewerRole ?? c.viewerRole
+        c.viewerHasLeft = Boolean(d.viewerHasLeft)
+        c.viewerRemovedByAdmin = Boolean(d.viewerRemovedByAdmin)
+        c.viewerHistoryVisibleUpToMessageId = d.viewerHistoryVisibleUpToMessageId != null
+          ? String(d.viewerHistoryVisibleUpToMessageId)
+          : null
+        c.canSendMessages = d.canSendMessages !== false
+        if (d.lastMessageId != null) {
+          c.lastMessageId = String(d.lastMessageId)
+        }
+        if (d.lastMessagePreview !== undefined) {
+          c.lastMessagePreview = normalizeLastPreviewObject(d.lastMessagePreview)
+          c.lastMessage = lastPreviewText({ lastMessagePreview: d.lastMessagePreview })
+        }
+        if (d.lastMessageAt) {
+          c.updatedAt = new Date(d.lastMessageAt)
+        }
+        if (Array.isArray(d.participants)) {
+          c.participants = d.participants
+        }
+        const cap = d.viewerHistoryVisibleUpToMessageId != null
+          ? String(d.viewerHistoryVisibleUpToMessageId)
+          : ''
+        if (cap && Array.isArray(c.messages) && c.messages.length) {
+          c.messages = c.messages.filter(
+            m => m?.id != null && compareMongoObjectIdHex(String(m.id), cap) <= 0,
+          )
+        }
+        /**
+         * Trước đây đã rời / bị xóa: UI chỉ giữ tin tới mốc. Khi được mời lại,
+         * phải tải lại thread — không thì thiếu mọi tin gửi trong lúc không trong nhóm.
+         */
+        const rejoinedGroup = wasGroupViewerOut && d.viewerHasLeft === false
+        if (rejoinedGroup) {
+          c.messagesLoaded = false
+          c.messages = []
+          c.messagesNextCursor = null
+          if (String(selectedId.value) === String(cid)) {
+            await loadMessagesForConversation(cid)
+          }
+        }
+      }
     }
     catch (e) {
       console.error('getConversation (pins)', e)
@@ -181,6 +284,7 @@ export function useChatMessaging(
       c.messages = sortMessagesByTimeAsc(mapped)
       c.messagesNextCursor = nextMessagesCursorFromData(data)
       mergeParticipantReceiptsFromEnvelope(c, data)
+      refreshGroupSeenAvatarsOnConv(c)
       c.messagesLoaded = true
     } catch (e) {
       console.error('getMessages', e)
@@ -220,6 +324,7 @@ export function useChatMessaging(
       c.messages = sortMessagesByTimeAsc([...byId.values()])
       c.messagesNextCursor = nextMessagesCursorFromData(data)
       mergeParticipantReceiptsFromEnvelope(c, data)
+      refreshGroupSeenAvatarsOnConv(c)
       await nextTick()
       if (el) {
         el.scrollTop = el.scrollHeight - prevScrollHeight + prevScrollTop
@@ -245,7 +350,7 @@ export function useChatMessaging(
       return
     }
     if (Array.isArray(payload?.participantReceipts)) {
-      patchParticipantReceipts(conv, payload.participantReceipts)
+      mergeParticipantReceiptsFromEnvelope(conv, payload)
     } else {
       const reader = payload?.readerUserId
       const upTo = payload?.upToMessageId
@@ -254,8 +359,8 @@ export function useChatMessaging(
           {
             userId: String(reader),
             lastReadMessageId: String(upTo),
-            lastDeliveredMessageId: String(upTo)
-          }
+            lastDeliveredMessageId: String(upTo),
+          },
         ])
       }
     }
@@ -267,6 +372,7 @@ export function useChatMessaging(
         conv.unreadCount = n
       }
     }
+    refreshGroupSeenAvatarsOnConv(conv)
     scheduleRefreshFolderUnreadTotals()
   }
 
@@ -291,6 +397,13 @@ export function useChatMessaging(
       return
     }
     const mid = String(raw.id ?? '')
+    if (mid && conv.viewerHistoryVisibleUpToMessageId) {
+      const cap = String(conv.viewerHistoryVisibleUpToMessageId)
+      if (compareMongoObjectIdHex(mid, cap) > 0) {
+        scheduleRefreshFolderUnreadTotals()
+        return
+      }
+    }
     if (mid && conv.messages.some(m => String(m.id) === mid)) {
       return
     }
@@ -319,6 +432,7 @@ export function useChatMessaging(
     if (Array.isArray(payload?.participantReceipts)) {
       patchParticipantReceipts(conv, payload.participantReceipts)
     }
+    refreshGroupSeenAvatarsOnConv(conv)
     scheduleRefreshFolderUnreadTotals()
   }
 
@@ -348,6 +462,7 @@ export function useChatMessaging(
       conv.lastMessagePreview = {
         text: conv.lastMessage,
         senderUserId: raw?.senderUserId != null ? String(raw.senderUserId) : null,
+        messageType: 'text',
       }
     }
     scheduleRefreshFolderUnreadTotals()
@@ -427,6 +542,8 @@ export function useChatMessaging(
       if (active.value) {
         active.value.messages = sortMessagesByTimeAsc([...byId.values()])
         active.value.messagesLoaded = true
+        mergeParticipantReceiptsFromEnvelope(active.value, data)
+        refreshGroupSeenAvatarsOnConv(active.value)
       }
       await nextTick()
       scrollToMessageIdOnce(id)
@@ -535,11 +652,13 @@ export function useChatMessaging(
       const uid = unref(myUserId)
       active.value.lastMessagePreview = {
         text: previewText,
-        senderUserId: uid != null ? String(uid) : null
+        senderUserId: uid != null ? String(uid) : null,
+        messageType: 'text',
       }
       active.value.lastMessage = previewText
       active.value.updatedAt = msg.at
       mergeParticipantReceiptsFromEnvelope(active.value, data)
+      refreshGroupSeenAvatarsOnConv(active.value)
       draft.value = ''
       clearPendingChatImage()
       clearReplyToMessage()

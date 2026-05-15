@@ -20,7 +20,15 @@ const props = defineProps({
   isAvatarBroken: { type: Function, required: true },
 })
 
-const emit = defineEmits(['update:query', 'set-folder', 'select', 'open-profile', 'avatar-error'])
+const emit = defineEmits(['update:query', 'set-folder', 'select', 'open-profile', 'avatar-error', 'new-group'])
+
+function previewSubtitleClass(c) {
+  const t = c?.lastMessagePreview?.messageType
+  if (t === 'system' || t === 'call_log') {
+    return 'text-zinc-400'
+  }
+  return 'text-zinc-500'
+}
 
 const queryModel = computed({
   get: () => props.query,
@@ -38,12 +46,21 @@ const queryModel = computed({
         <h1 class="text-[18px] font-semibold tracking-tight text-zinc-900">
           Messages
         </h1>
-        <NuxtLink
-          to="/account"
-          class="rounded-full bg-zinc-100 px-3 py-1.5 text-[12px] font-medium text-zinc-600 transition hover:bg-zinc-200/90"
-        >
-          Account
-        </NuxtLink>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            class="rounded-full bg-[#1877f2] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[#166fe5]"
+            @click="emit('new-group')"
+          >
+            Nhóm mới
+          </button>
+          <NuxtLink
+            to="/account"
+            class="rounded-full bg-zinc-100 px-3 py-1.5 text-[12px] font-medium text-zinc-600 transition hover:bg-zinc-200/90"
+          >
+            Account
+          </NuxtLink>
+        </div>
       </div>
       <div class="mt-3 flex gap-1 rounded-full bg-zinc-100/90 p-1">
         <button
@@ -144,7 +161,7 @@ const queryModel = computed({
                 {{ initials(c.name) }}
               </div>
               <span
-                v-if="c.online"
+                v-if="c.online && !c.isGroup"
                 class="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white"
                 aria-hidden="true"
               />
@@ -154,7 +171,10 @@ const queryModel = computed({
                 <span class="truncate text-[15px] font-semibold text-zinc-900">{{ c.name }}</span>
                 <time class="shrink-0 text-[11px] tabular-nums text-zinc-400">{{ timeLabel(c.updatedAt) }}</time>
               </div>
-              <p class="mt-0.5 line-clamp-2 text-[13px] leading-snug text-zinc-500">
+              <p
+                class="mt-0.5 line-clamp-2 text-[13px] font-normal leading-snug"
+                :class="previewSubtitleClass(c)"
+              >
                 {{ c.lastMessage }}
               </p>
             </div>

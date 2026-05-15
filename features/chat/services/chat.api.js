@@ -31,6 +31,69 @@ export const chatApi = {
     )
   },
 
+  /** POST { type: 'group', groupName, participantIds[], groupAvatarObjectKey? } */
+  createGroup(body) {
+    return axios.post(
+      getUrlList().chatConversationCreate,
+      {
+        type: 'group',
+        groupName: body.groupName,
+        participantIds: body.participantIds,
+        groupAvatarObjectKey: body.groupAvatarObjectKey,
+      },
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  patchGroup(conversationId, body) {
+    return axios.patch(
+      getUrlList().chatConversationGroupPatch(conversationId),
+      body,
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  leaveGroup(conversationId) {
+    return axios.post(
+      getUrlList().chatConversationGroupLeave(conversationId),
+      {},
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  dissolveGroup(conversationId) {
+    return axios.post(
+      getUrlList().chatConversationGroupDissolve(conversationId),
+      {},
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  transferGroupAdmin(conversationId, newAdminUserId) {
+    return axios.post(
+      getUrlList().chatConversationGroupTransferAdmin(conversationId),
+      { newAdminUserId: String(newAdminUserId) },
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  addGroupMembers(conversationId, userIds) {
+    const ids = Array.isArray(userIds) ? userIds.map(x => String(x)) : []
+    return axios.post(
+      getUrlList().chatConversationGroupAddMembers(conversationId),
+      { userIds: ids },
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  removeGroupMember(conversationId, userId) {
+    return axios.post(
+      getUrlList().chatConversationGroupRemoveMember(conversationId),
+      { userId: String(userId) },
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
   /** Query: page, limit, folder (inbox | pending | all) */
   listConversations(params = {}) {
     return axios.get(getUrlList().chatConversations, {
