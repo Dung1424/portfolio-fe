@@ -57,7 +57,20 @@ type ChatSocketPayload = {
   message?: ChatSocketMessage | null
 }
 
+type ChatConversationSocketPayload = {
+  conversationId?: string | null
+  conversation?: {
+    id?: string | null
+  } | null
+}
+
 type SenderProfile = {
+  name: string
+  avatarUrl: string
+}
+
+type ChatConversationMeta = {
+  isGroup: boolean
   name: string
   avatarUrl: string
 }
@@ -65,9 +78,9 @@ type SenderProfile = {
 type ChatToastItem = {
   id: string
   conversationId: string
-  senderName: string
-  senderAvatarUrl: string
-  senderInitials: string
+  title: string
+  avatarUrl: string
+  initials: string
   messageText: string
   relativeTime: string
 }
@@ -101,6 +114,7 @@ const chatUnreadTotal = ref(0)
 const hasChatUnread = computed(() => chatUnreadTotal.value > 0)
 const chatNotifySoundSrc = computed(() => getChatNotifyPublicSrc())
 const senderProfileCache = new Map<string, SenderProfile>()
+const conversationMetaCache = new Map<string, ChatConversationMeta>()
 const chatToasts = ref<ChatToastItem[]>([])
 const chatToastTimers = new Map<string, ReturnType<typeof setTimeout>>()
 let removeGlobalChatAudioUnlockListeners: (() => void) | null = null
@@ -122,6 +136,16 @@ async function refreshChatUnreadBadge() {
 }
 
 function onChatUnreadSocketEvent() {
+  refreshChatUnreadBadge()
+}
+
+function onChatConversationMetaChanged(payload: ChatConversationSocketPayload) {
+  const conversationId = payload?.conversationId
+    ?? payload?.conversation?.id
+    ?? ''
+  if (conversationId) {
+    conversationMetaCache.delete(String(conversationId))
+  }
   refreshChatUnreadBadge()
 }
 
@@ -221,6 +245,39 @@ async function getSenderProfile(senderUserId: string): Promise<SenderProfile> {
   }
 }
 
+async function getConversationToastMeta(conversationId: string): Promise<ChatConversationMeta | null> {
+  if (!conversationId) {
+    return null
+  }
+  const cached = conversationMetaCache.get(conversationId)
+  if (cached) {
+    return cached
+  }
+  try {
+    const res = await chatApi.getConversation(conversationId)
+    const data = unwrapChatData(res)
+    const raw = data?.conversation ?? data
+    if (!raw?.id) {
+      return null
+    }
+    const isGroup = raw.type === 'group'
+    const meta: ChatConversationMeta = {
+      isGroup,
+      name: isGroup
+        ? String(raw.groupName || 'Nhóm')
+        : 'Direct message',
+      avatarUrl: isGroup
+        ? resolveMediaUrl(raw.groupAvatarUrl || '')
+        : ''
+    }
+    conversationMetaCache.set(conversationId, meta)
+    return meta
+  } catch (error) {
+    console.error('getConversationToastMeta', error)
+    return null
+  }
+}
+
 function removeChatToast(toastId: string) {
   const timer = chatToastTimers.get(toastId)
   if (timer) {
@@ -251,16 +308,24 @@ async function openIncomingMessageToast(payload: ChatSocketPayload) {
   }
   const conversationId = payload?.conversationId != null ? String(payload.conversationId) : ''
   const senderUserId = payload?.message?.senderUserId != null ? String(payload.message.senderUserId) : ''
+  const conversationMeta = await getConversationToastMeta(conversationId)
   const sender = await getSenderProfile(senderUserId)
+  const isGroup = conversationMeta?.isGroup === true
+  const baseMessageText = buildIncomingMessageDescription(payload)
   const createdAt = payload?.message?.createdAt || payload?.message?.updatedAt
   const toastId = conversationId || `chat-${Date.now()}`
+  const title = isGroup ? conversationMeta.name : sender.name
+  const avatarUrl = isGroup ? conversationMeta.avatarUrl : sender.avatarUrl
+  const messageText = isGroup && sender.name
+    ? `${sender.name}: ${baseMessageText}`
+    : baseMessageText
   const nextToast: ChatToastItem = {
     id: toastId,
     conversationId,
-    senderName: sender.name,
-    senderAvatarUrl: sender.avatarUrl,
-    senderInitials: senderInitials(sender.name),
-    messageText: buildIncomingMessageDescription(payload),
+    title,
+    avatarUrl,
+    initials: senderInitials(title),
+    messageText,
     relativeTime: formatChatToastTimeShort(createdAt)
   }
   chatToasts.value = [
@@ -343,6 +408,8 @@ onMounted(async () => {
     const socket = getChatSocket()
     socket?.on('message:new', onGlobalMessageNew)
     socket?.on('conversation:read', onChatUnreadSocketEvent)
+    socket?.on('conversation:added', onChatConversationMetaChanged)
+    socket?.on('group:updated', onChatConversationMetaChanged)
   }
   document.addEventListener('click', onDocumentClick)
 })
@@ -355,6 +422,8 @@ onUnmounted(() => {
   const socket = getChatSocket()
   socket?.off('message:new', onGlobalMessageNew)
   socket?.off('conversation:read', onChatUnreadSocketEvent)
+  socket?.off('conversation:added', onChatConversationMetaChanged)
+  socket?.off('group:updated', onChatConversationMetaChanged)
   stopPresenceHeartbeat()
   disconnectChatSocket()
   document.removeEventListener('click', onDocumentClick)
@@ -440,6 +509,8 @@ watch(isLoggedIn, async (loggedIn) => {
   const socket = getChatSocket()
   socket?.off('message:new', onGlobalMessageNew)
   socket?.off('conversation:read', onChatUnreadSocketEvent)
+  socket?.off('conversation:added', onChatConversationMetaChanged)
+  socket?.off('group:updated', onChatConversationMetaChanged)
   stopPresenceHeartbeat()
 
   if (!loggedIn) {
@@ -454,6 +525,8 @@ watch(isLoggedIn, async (loggedIn) => {
   const nextSocket = getChatSocket()
   nextSocket?.on('message:new', onGlobalMessageNew)
   nextSocket?.on('conversation:read', onChatUnreadSocketEvent)
+  nextSocket?.on('conversation:added', onChatConversationMetaChanged)
+  nextSocket?.on('group:updated', onChatConversationMetaChanged)
 })
 </script>
 
@@ -475,8 +548,8 @@ watch(isLoggedIn, async (loggedIn) => {
             @click="openConversationFromToast(toast.conversationId, toast.id)"
           >
             <img
-              v-if="toast.senderAvatarUrl"
-              :src="toast.senderAvatarUrl"
+              v-if="toast.avatarUrl"
+              :src="toast.avatarUrl"
               alt=""
               class="h-14 w-14 shrink-0 rounded-full object-cover ring-1 ring-zinc-200"
             >
@@ -484,12 +557,12 @@ watch(isLoggedIn, async (loggedIn) => {
               v-else
               class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-[17px] font-semibold text-white"
             >
-              {{ toast.senderInitials }}
+              {{ toast.initials }}
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex min-w-0 items-center gap-2 pr-2">
                 <p class="min-w-0 flex-1 truncate text-[17px] font-semibold leading-tight text-zinc-900">
-                  {{ toast.senderName }}
+                  {{ toast.title }}
                 </p>
                 <span class="shrink-0 text-[12px] font-medium uppercase tracking-[0.02em] text-zinc-400">
                   {{ toast.relativeTime }}

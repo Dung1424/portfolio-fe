@@ -18,6 +18,11 @@ export function callLogTitle(meta) {
   return 'Call ended'
 }
 
+export function callLogCardTitle(meta, isOwn) {
+  const type = meta?.callType === 'video' ? 'video' : 'thoại'
+  return `Cuộc gọi ${type} ${isOwn ? 'đi' : 'đến'}`
+}
+
 export function callLogTone(meta) {
   const status = typeof meta?.status === 'string' ? meta.status : 'ended'
   if (status === 'missed' || status === 'rejected') {

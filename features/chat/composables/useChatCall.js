@@ -114,7 +114,7 @@ export function useChatCall(selectedId, active, myUserId) {
 
   async function pushCallHistory(call, status, extra = {}) {
     const conversationId = safeString(call?.conversationId)
-    if (!conversationId) {
+    if (!conversationId || call?.direction !== 'outgoing') {
       return
     }
     const kind = call?.callType === CALL_TYPE.VIDEO ? 'video' : 'audio'
@@ -434,7 +434,6 @@ export function useChatCall(selectedId, active, myUserId) {
       stopIncomingRingtone()
       terminalSignalReceived = true
       await emitWithAck(CALL_EVENT.REJECT, callPayload(incoming, { reason }))
-      void pushCallHistory(incoming, 'rejected')
     } catch (e) {
       console.error('rejectIncomingCall', e)
     } finally {
@@ -518,7 +517,6 @@ export function useChatCall(selectedId, active, myUserId) {
       void emitWithAck(CALL_EVENT.MISSED, callPayload(ringingCall, { reason: 'timeout' })).catch((e) => {
         console.error('incoming timeout missed', e)
       })
-      void pushCallHistory(ringingCall, 'missed')
       pushNotice('info', 'Missed call')
       fullCleanup()
     }, INCOMING_RING_TIMEOUT_MS)

@@ -25,6 +25,7 @@ import {
   isCallLogMessage,
   callLogIcon,
   callLogTitle,
+  callLogCardTitle,
   callLogTone,
   callLogDuration,
 } from '~/features/chat/utils/chatCallLog.js'
@@ -1016,6 +1017,7 @@ const messageListApi = computed(() => ({
   isCallLogMessage,
   callLogIcon,
   callLogTitle,
+  callLogCardTitle,
   callLogTone,
   callLogDuration,
   isAvatarBroken,
@@ -1239,6 +1241,8 @@ const createGroupName = ref('')
 const createGroupSelectedUserIds = ref([])
 const createGroupMutualRows = ref([])
 const createGroupListLoading = ref(false)
+const MAX_GROUP_MEMBERS = 10
+const MAX_GROUP_INVITEES = MAX_GROUP_MEMBERS - 1
 
 async function openCreateGroupModal() {
   createGroupOpen.value = true
@@ -1303,6 +1307,13 @@ function toggleCreateGroupMember(userId) {
     createGroupSelectedUserIds.value = cur.filter(x => x !== id)
   }
   else {
+    if (cur.length >= MAX_GROUP_INVITEES) {
+      notification.warning({
+        message: 'Nhóm đã đủ thành viên',
+        description: `Một nhóm tối đa ${MAX_GROUP_MEMBERS} thành viên, bao gồm bạn.`,
+      })
+      return
+    }
     createGroupSelectedUserIds.value = [...cur, id]
   }
 }
@@ -1318,6 +1329,13 @@ async function submitCreateGroup() {
     notification.warning({
       message: 'Chọn ít nhất 2 người',
       description: 'Nhóm cần tối thiểu 3 người gồm bạn và hai người bạn follow lẫn nhau.',
+    })
+    return
+  }
+  if (picked.length > MAX_GROUP_INVITEES) {
+    notification.warning({
+      message: 'Nhóm đã đủ thành viên',
+      description: `Một nhóm tối đa ${MAX_GROUP_MEMBERS} thành viên, bao gồm bạn.`,
     })
     return
   }
@@ -2238,7 +2256,7 @@ onUnmounted(() => {
   >
     <p class="mb-2 text-[13px] text-zinc-500">
       Danh sách bên dưới là những người <strong>bạn follow và họ cũng follow lại bạn</strong>.
-      Chọn ít nhất hai người để tạo nhóm (tối thiểu 3 người gồm cả bạn).
+      Chọn 2-9 người để tạo nhóm (tối đa 10 thành viên gồm cả bạn).
     </p>
     <label class="mb-3 block text-[13px] font-medium text-zinc-700">Tên nhóm</label>
     <a-input
@@ -2248,7 +2266,7 @@ onUnmounted(() => {
       max-length="120"
     />
     <p class="mb-2 text-[13px] font-medium text-zinc-700">
-      Thành viên ({{ createGroupSelectedUserIds.length }} đã chọn)
+      Thành viên ({{ createGroupSelectedUserIds.length }}/{{ MAX_GROUP_INVITEES }} đã chọn)
     </p>
     <ul
       class="max-h-52 overflow-y-auto rounded-lg border border-zinc-200 divide-y divide-zinc-100"
@@ -2270,6 +2288,7 @@ onUnmounted(() => {
             type="checkbox"
             class="h-4 w-4 shrink-0 rounded border-zinc-300"
             :checked="createGroupSelectedUserIds.includes(row.id)"
+            :disabled="!createGroupSelectedUserIds.includes(row.id) && createGroupSelectedUserIds.length >= MAX_GROUP_INVITEES"
             @change="toggleCreateGroupMember(row.id)"
           >
           <label

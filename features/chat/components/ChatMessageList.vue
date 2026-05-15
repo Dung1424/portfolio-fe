@@ -60,7 +60,7 @@ defineExpose({ scrollRoot })
     <div class="flex w-full flex-col">
       <template v-for="row in rows" :key="row.msg.id">
         <div
-          v-if="peer.isGroup && !row.msg.me && row.groupFirst && !api.isSystemMessage(row.msg)"
+          v-if="peer.isGroup && !row.msg.me && row.groupFirst && !(api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg))"
           class="w-full max-w-[85%] truncate pr-2 pl-[38px] text-left text-[13px] font-semibold text-zinc-600 sm:max-w-[70%]"
           :class="row.index > 0 ? 'mt-3' : ''"
         >
@@ -70,21 +70,21 @@ defineExpose({ scrollRoot })
           class="flex gap-2.5"
           :data-message-id="row.msg.id"
           :class="[
-            api.isSystemMessage(row.msg)
+            api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg)
               ? 'w-full justify-center'
               : row.msg.me
                 ? 'justify-end'
                 : 'justify-start',
-            peer.isGroup && !row.msg.me && !api.isSystemMessage(row.msg)
+            peer.isGroup && !row.msg.me && !(api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg))
               ? (row.groupFirst ? (row.index > 0 ? 'mt-0.5' : 'mt-0') : 'mt-0.5')
               : (row.groupFirst && row.index > 0 ? 'mt-3' : row.groupFirst ? '' : 'mt-0.5'),
-            !row.msg.me && !api.isSystemMessage(row.msg) ? 'items-center' : '',
+            !row.msg.me && !(api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg)) ? 'items-center' : '',
             highlightedMessageId === String(row.msg.id) ? 'rounded-2xl ring-2 ring-[#1877f2]/35 ring-offset-2 ring-offset-[#f0f2f5]' : ''
           ]"
         >
         <img
           v-if="
-            !api.isSystemMessage(row.msg)
+            !(api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg))
               && !row.msg.me
               && row.groupLast
               && !api.isAvatarBroken(peer.isGroup ? api.incomingAvatarKey(row.msg) : peer.id)
@@ -115,7 +115,7 @@ defineExpose({ scrollRoot })
           "
         >
         <div
-          v-else-if="!api.isSystemMessage(row.msg) && !row.msg.me && row.groupLast"
+          v-else-if="!(api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg)) && !row.msg.me && row.groupLast"
           class="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-[10px] font-bold text-white"
           :class="api.fallbackClass(peer.isGroup ? api.incomingAvatarKey(row.msg) : peer.id)"
           role="button"
@@ -139,14 +139,14 @@ defineExpose({ scrollRoot })
           }}
         </div>
         <div
-          v-else-if="!api.isSystemMessage(row.msg) && !row.msg.me"
+          v-else-if="!(api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg)) && !row.msg.me"
           class="w-7 shrink-0"
           aria-hidden="true"
         />
         <div
           class="max-w-[85%] sm:max-w-[70%]"
           :class="[
-            api.isSystemMessage(row.msg)
+            api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg)
               ? 'w-full max-w-full shrink-0 sm:max-w-full flex flex-col items-center'
               : row.msg.me
                 ? 'flex flex-col items-end'
@@ -245,7 +245,7 @@ defineExpose({ scrollRoot })
               class="px-3.5 py-2.5 text-[15px] leading-[1.45] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
               :class="
                 api.isCallLogMessage(row.msg)
-                  ? ['bg-transparent px-0 py-1 shadow-none']
+                  ? ['overflow-hidden rounded-[14px] border px-0 py-0 shadow-sm', row.msg.me ? 'border-[#9bdcf0] bg-[#c9f4ff] text-zinc-900' : 'border-zinc-200 bg-white text-zinc-900']
                   : row.msg.isSticker
                     ? [
                         'bg-transparent px-0 py-0 shadow-none'
@@ -266,14 +266,23 @@ defineExpose({ scrollRoot })
             >
               <div
                 v-if="api.isCallLogMessage(row.msg)"
-                class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-medium"
-                :class="api.callLogTone(row.msg.metadata)"
+                class="w-[220px] max-w-full"
               >
-                <i :class="api.callLogIcon(row.msg.metadata)" />
-                <span>{{ api.callLogTitle(row.msg.metadata) }}</span>
-                <span v-if="api.callLogDuration(row.msg.metadata)" class="opacity-80">
-                  · {{ api.callLogDuration(row.msg.metadata) }}
-                </span>
+                <div class="px-4 py-3">
+                  <p class="text-[15px] font-bold leading-snug">
+                    {{ api.callLogCardTitle(row.msg.metadata, row.msg.me) }}
+                  </p>
+                  <p class="mt-1 flex items-center gap-2 text-[14px] text-zinc-600">
+                    <i :class="api.callLogIcon(row.msg.metadata)" />
+                    <span>{{ api.callLogDuration(row.msg.metadata) || api.callLogTitle(row.msg.metadata) }}</span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="block w-full border-t border-black/10 px-4 py-2.5 text-center text-[14px] font-bold uppercase text-[#078bdc] transition hover:bg-white/35"
+                >
+                  Gọi lại
+                </button>
               </div>
               <p
                 v-else-if="row.msg.recalledAt"
@@ -313,7 +322,7 @@ defineExpose({ scrollRoot })
                 decoding="async"
               >
               <p
-                v-if="!row.msg.recalledAt && row.msg.text && !row.msg.isSticker"
+                v-if="!row.msg.recalledAt && !api.isCallLogMessage(row.msg) && row.msg.text && !row.msg.isSticker"
                 class="whitespace-pre-wrap break-words"
                 :class="row.msg.imageUrl ? 'mt-2' : ''"
               >
@@ -322,7 +331,7 @@ defineExpose({ scrollRoot })
             </div>
           </div>
           <p
-            v-if="row.showMeta && api.isSystemMessage(row.msg)"
+            v-if="row.showMeta && api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg)"
             class="mt-1 flex flex-wrap items-center justify-center gap-x-1.5 px-1.5 text-center text-[11px] text-zinc-400"
           >
             <span>{{ api.timeLabel(row.msg.at) }}</span>
@@ -344,7 +353,7 @@ defineExpose({ scrollRoot })
             v-if="
               row.showMeta
                 && row.msg.me
-                && !api.isSystemMessage(row.msg)
+                && !(api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg))
                 && peer.isGroup
                 && api.groupSeenDisplay(row.msg).length
             "
@@ -379,7 +388,7 @@ defineExpose({ scrollRoot })
         </div>
         </div>
         <p
-          v-if="row.showMeta && !row.msg.me && !api.isSystemMessage(row.msg)"
+          v-if="row.showMeta && !row.msg.me && !(api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg))"
           class="mt-1 pl-[38px] pr-2 text-[11px] text-zinc-400"
         >
           <span>{{ api.timeLabel(row.msg.at) }}</span>
@@ -388,7 +397,7 @@ defineExpose({ scrollRoot })
           v-if="
             row.showMeta
               && !row.msg.me
-              && !api.isSystemMessage(row.msg)
+              && !(api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg))
               && peer.isGroup
               && api.groupSeenDisplay(row.msg).length
           "
