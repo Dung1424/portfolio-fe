@@ -410,7 +410,9 @@ export function useChatMessaging(
     const ui = mapApiMessageToUi(raw, my)
     conv.messages.push(ui)
     bumpConversationRowFromMessage(conv, raw, ui)
-    maybePlayIncomingNotify(isIncoming, conversationId)
+    if (!conv.notificationMuted) {
+      maybePlayIncomingNotify(isIncoming, conversationId)
+    }
 
     const bump = payload?.unreadBumpForUserIds
     const inBump = Array.isArray(bump) && my != null && bump.some(x => String(x) === String(my))

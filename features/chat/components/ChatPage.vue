@@ -63,6 +63,7 @@ const {
   loadConversationList,
   setListFolder: setListFolderInner,
   onPresenceUpdate,
+  applyPresenceToConversations,
   scheduleRefreshFolderUnreadTotals,
   clearFolderUnreadDebounce,
   mergeConversationFromRealtime,
@@ -71,6 +72,15 @@ const {
 const myUserId = computed(() => userStore.user?.id ?? null)
 
 const groupDetailsOpen = ref(false)
+const accountSettingsOpen = ref(false)
+const activeStatusVisible = ref(true)
+const activeStatusLoading = ref(false)
+const notificationSoundEnabled = ref(true)
+const messagePreviewEnabled = ref(true)
+const readReceiptsEnabled = ref(true)
+const typingStatusVisible = ref(true)
+const messageRequestsFrom = ref('everyone')
+const accountSettingSavingKey = ref('')
 const groupDetailMemberRows = ref([])
 const addMemberCandidates = ref([])
 const groupMembersHydrateLoading = ref(false)
@@ -83,7 +93,9 @@ const groupDrawerContentLoading = computed(() =>
 /** Nhóm: userId → { name, avatarUrl, username } — hiển thị người gửi trong thread */
 const groupSenderDisplayByUserId = ref({})
 
-const notify = useChatMessageNotify(selectedId, mobileShowThread)
+const notify = useChatMessageNotify(selectedId, mobileShowThread, {
+  notificationSoundEnabled,
+})
 const {
   notifyAudioRef,
   notifySoundSrc,
@@ -229,6 +241,10 @@ const messagingGateBannerText = computed(() => {
       'Khóa nội bộ CHAT_INTERNAL_SERVICE_KEY không khớp giữa Node và Laravel — kiểm tra hai file .env.',
     laravel_internal_not_configured:
       'Laravel chưa bật CHAT_INTERNAL_SERVICE_KEY (hoặc trả lỗi 503 cho API nội bộ).',
+    recipient_requires_mutual_follow:
+      'Người này chỉ nhận tin nhắn từ người follow lẫn nhau.',
+    recipient_requires_following:
+      'Người này chỉ nhận tin nhắn từ người họ đang follow.',
     left_group: 'Bạn đã rời nhóm — chỉ xem được lịch sử, không gửi tin hoặc gọi.',
     group_dissolved: 'Nhóm đã được giải tán.',
   }
@@ -456,6 +472,10 @@ function scheduleTypingStop() {
 }
 
 function onComposerInput() {
+  if (!typingStatusVisible.value) {
+    stopTypingNow()
+    return
+  }
   const hasText = draft.value.trim().length > 0
   if (!hasText) {
     stopTypingNow()
@@ -1101,6 +1121,9 @@ const messageListApi = computed(() => ({
 }))
 
 function shouldShowOutgoingReceipt(messages, messageId, conv) {
+  if (!readReceiptsEnabled.value) {
+    return false
+  }
   if (messageId == null || !conv) {
     return false
   }
@@ -1128,10 +1151,16 @@ function shouldShowOutgoingReceipt(messages, messageId, conv) {
 }
 
 function receiptLabel(conv, messageId) {
+  if (!readReceiptsEnabled.value) {
+    return ''
+  }
   return outgoingMessageReceiptLabel(conv, messageId, myUserId.value)
 }
 
 function directSeenDisplay(conv, messageId) {
+  if (!readReceiptsEnabled.value) {
+    return []
+  }
   if (!conv || conv.isGroup) {
     return []
   }
@@ -1149,7 +1178,7 @@ function directSeenDisplay(conv, messageId) {
 }
 
 function peerLastSeenSubtitle(conv) {
-  if (!conv || conv.online) {
+  if (!conv || conv.online || conv.presenceHidden) {
     return ''
   }
   const ms = conv.peerLastSeenAt
@@ -1170,6 +1199,90 @@ function peerLastSeenSubtitle(conv) {
   }
   const d = Math.floor(diff / 86_400_000)
   return d < 2 ? 'Yesterday' : `${d} days ago`
+}
+
+async function fetchPresenceSettings() {
+  try {
+    const res = await chatApi.getPresenceSettings()
+    const data = unwrapChatData(res)
+    applyAccountSettings(data?.setting)
+  } catch (e) {
+    console.error('presence settings', e)
+  }
+}
+
+function applyAccountSettings(setting) {
+  activeStatusVisible.value = setting?.activeStatusVisible !== false
+  notificationSoundEnabled.value = setting?.notificationSoundEnabled !== false
+  messagePreviewEnabled.value = setting?.messagePreviewEnabled !== false
+  readReceiptsEnabled.value = setting?.readReceiptsEnabled !== false
+  typingStatusVisible.value = setting?.typingStatusVisible !== false
+  messageRequestsFrom.value = ['everyone', 'mutual_follow', 'following'].includes(setting?.messageRequestsFrom)
+    ? setting.messageRequestsFrom
+    : 'everyone'
+  if (import.meta.client) {
+    localStorage.setItem('chatAccountSettings', JSON.stringify({
+      notificationSoundEnabled: notificationSoundEnabled.value,
+      messagePreviewEnabled: messagePreviewEnabled.value,
+    }))
+  }
+}
+
+async function patchAccountSetting(key, value) {
+  accountSettingSavingKey.value = key
+  try {
+    const body = { [key]: value }
+    const res = await chatApi.patchPresenceSettings(body)
+    const data = unwrapChatData(res)
+    applyAccountSettings(data?.setting)
+    if (key === 'activeStatusVisible') {
+      await applyPresenceToConversations(conversations.value)
+    }
+    if (key === 'typingStatusVisible' && value === false) {
+      stopTypingNow()
+    }
+    notification.success({ message: 'Đã cập nhật cài đặt' })
+  } catch (e) {
+    console.error('patch account setting', e)
+    notification.error({
+      message: 'Cài đặt tài khoản',
+      description: e?.response?.data?.message || 'Không cập nhật được cài đặt.'
+    })
+  } finally {
+    accountSettingSavingKey.value = ''
+  }
+}
+
+async function toggleActiveStatusVisible() {
+  activeStatusLoading.value = true
+  try {
+    const next = !activeStatusVisible.value
+    const res = await chatApi.patchPresenceSettings({ activeStatusVisible: next })
+    const data = unwrapChatData(res)
+    applyAccountSettings(data?.setting)
+    await applyPresenceToConversations(conversations.value)
+    notification.success({
+      message: activeStatusVisible.value
+        ? 'Đã bật trạng thái hoạt động'
+        : 'Đã tắt trạng thái hoạt động',
+      description: activeStatusVisible.value
+        ? undefined
+        : 'Người khác sẽ không thấy bạn online và bạn cũng không thấy trạng thái của họ.'
+    })
+  } catch (e) {
+    console.error('toggle active status', e)
+    notification.error({
+      message: 'Trạng thái hoạt động',
+      description: e?.response?.data?.message || 'Không cập nhật được trạng thái hoạt động.'
+    })
+  } finally {
+    activeStatusLoading.value = false
+  }
+}
+
+function openAccountSettings() {
+  accountSettingsOpen.value = true
+  fetchPresenceSettings()
 }
 
 function selectConversation(id) {
@@ -1202,6 +1315,36 @@ function startVideoCall() {
     return
   }
   startOutgoingCall(CALL_TYPE.VIDEO)
+}
+
+async function setConversationNotificationMute(duration) {
+  const cid = active.value?.id
+  if (!cid) {
+    return
+  }
+  const body = duration === 'off'
+    ? { mute: false }
+    : { mute: true, duration }
+  try {
+    const res = await chatApi.patchConversationNotification(cid, body)
+    const data = unwrapChatData(res)
+    const raw = data?.conversation ?? data
+    const notificationState = raw?.notification ?? data?.notification ?? { muted: false }
+    active.value.notification = notificationState
+    active.value.notificationMuted = Boolean(notificationState.muted)
+    active.value.notificationMutedUntil = notificationState.mutedUntil ?? null
+    active.value.notificationMutedForever = Boolean(notificationState.mutedForever)
+    notification.success({
+      message: notificationState.muted ? 'Đã tắt thông báo' : 'Đã bật thông báo'
+    })
+  }
+  catch (e) {
+    console.error('notification mute', e)
+    notification.error({
+      message: 'Thông báo',
+      description: e?.response?.data?.message || 'Không cập nhật được thông báo.'
+    })
+  }
 }
 
 function endCall() {
@@ -1713,6 +1856,9 @@ watch(
 )
 
 function groupSeenDisplay(msg) {
+  if (!readReceiptsEnabled.value) {
+    return []
+  }
   if (!msg?.groupSeenByUserIds?.length) {
     return []
   }
@@ -2349,6 +2495,7 @@ function onConversationAdded(payload) {
 onMounted(async () => {
   mountNotifyUnlock()
   await userStore.fetchUserData()
+  await fetchPresenceSettings()
   await loadConversationList()
   connectChatSocket()
   startPresenceHeartbeat()
@@ -2624,6 +2771,7 @@ onUnmounted(() => {
           @open-profile="openPeerProfile"
           @avatar-error="markAvatarBroken"
           @new-group="openCreateGroupModal"
+          @open-account-settings="openAccountSettings"
         />
 
         <section
@@ -2706,35 +2854,79 @@ onUnmounted(() => {
                       </p>
                     </div>
                   </div>
-                  <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
+                  <div class="ml-auto flex items-center justify-end gap-1.5">
                     <button
                       type="button"
-                      class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-[#1877f2]"
-                      :class="threadSearchOpen ? 'bg-[#1877f2]/12 text-[#1877f2]' : ''"
-                      :aria-expanded="threadSearchOpen"
-                      aria-label="Search in conversation"
-                      @click="toggleThreadSearch"
-                    >
-                      <i class="fa-solid fa-magnifying-glass text-[15px]" />
-                    </button>
-                    <button
-                      type="button"
-                      class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-[#1877f2]"
+                      class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-[#1877f2]"
                       aria-label="Audio call"
                       :disabled="isCalling || isGroupCalling || !messagingAllowed"
                       @click="startAudioCall"
                     >
-                      <i class="fa-solid fa-phone text-[15px]" />
+                      <i class="fa-solid fa-phone text-[14px]" />
                     </button>
                     <button
                       type="button"
-                      class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-[#1877f2]"
+                      class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-[#1877f2]"
                       aria-label="Video call"
                       :disabled="isCalling || isGroupCalling || !messagingAllowed"
                       @click="startVideoCall"
                     >
-                      <i class="fa-solid fa-video text-[15px]" />
+                      <i class="fa-solid fa-video text-[14px]" />
                     </button>
+                    <a-dropdown trigger="click">
+                      <button
+                        type="button"
+                        class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-[#1877f2]"
+                        :class="active.notificationMuted ? 'bg-amber-100 text-amber-700 hover:bg-amber-100 hover:text-amber-800' : ''"
+                        aria-label="More conversation actions"
+                        @click.prevent
+                      >
+                        <i class="fa-solid fa-ellipsis text-[14px]" />
+                      </button>
+                      <template #overlay>
+                        <a-menu>
+                          <a-menu-item key="search" @click="toggleThreadSearch">
+                            <span class="flex items-center gap-2">
+                              <i class="fa-solid fa-magnifying-glass w-4 text-[12px]" />
+                              <span>{{ threadSearchOpen ? 'Đóng tìm kiếm' : 'Tìm trong hội thoại' }}</span>
+                            </span>
+                          </a-menu-item>
+                          <a-menu-item
+                            v-if="active.notificationMuted"
+                            key="off"
+                            @click="setConversationNotificationMute('off')"
+                          >
+                            <span class="flex items-center gap-2">
+                              <i class="fa-regular fa-bell w-4 text-[12px]" />
+                              <span>Bật thông báo lại</span>
+                            </span>
+                          </a-menu-item>
+                          <a-sub-menu key="mute">
+                            <template #title>
+                              <span class="flex items-center gap-2">
+                                <i
+                                  class="w-4 text-[12px]"
+                                  :class="active.notificationMuted ? 'fa-solid fa-bell-slash' : 'fa-regular fa-bell'"
+                                />
+                                <span>Tắt thông báo</span>
+                              </span>
+                            </template>
+                            <a-menu-item key="1h" @click="setConversationNotificationMute('1h')">
+                              1 giờ
+                            </a-menu-item>
+                            <a-menu-item key="8h" @click="setConversationNotificationMute('8h')">
+                              8 giờ
+                            </a-menu-item>
+                            <a-menu-item key="24h" @click="setConversationNotificationMute('24h')">
+                              24 giờ
+                            </a-menu-item>
+                            <a-menu-item key="forever" @click="setConversationNotificationMute('forever')">
+                              Đến khi bật lại
+                            </a-menu-item>
+                          </a-sub-menu>
+                        </a-menu>
+                      </template>
+                    </a-dropdown>
                   </div>
                 </div>
               </div>
@@ -3088,6 +3280,150 @@ onUnmounted(() => {
       Ghim ghi chú
     </label>
   </a-modal>
+  <a-drawer
+    v-model:open="accountSettingsOpen"
+    title="Cài đặt tài khoản"
+    placement="right"
+    :width="380"
+  >
+    <div class="space-y-4">
+      <div class="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3">
+        <img
+          :src="userStore.user?.avatarUrl || userStore.user?.avatar || defaultAvatarUrl"
+          alt=""
+          class="h-11 w-11 rounded-full object-cover ring-1 ring-zinc-200"
+        >
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-[15px] font-semibold text-zinc-900">
+            {{ userStore.user?.fullName || userStore.user?.name || userStore.user?.username || 'Tài khoản' }}
+          </p>
+          <p
+            v-if="userStore.user?.username"
+            class="truncate text-[12px] text-zinc-500"
+          >
+            @{{ userStore.user.username }}
+          </p>
+        </div>
+        <NuxtLink
+          to="/account"
+          class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-[#1877f2]"
+          title="Trang tài khoản"
+          @click="accountSettingsOpen = false"
+        >
+          <i class="fa-solid fa-arrow-up-right-from-square text-[12px]" />
+        </NuxtLink>
+      </div>
+
+      <section class="rounded-xl border border-zinc-200 bg-white">
+        <div class="flex items-start justify-between gap-3 border-b border-zinc-100 p-4">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-circle text-[9px] text-emerald-500" />
+              <h3 class="text-[14px] font-semibold text-zinc-900">
+                Trạng thái hoạt động
+              </h3>
+            </div>
+            <p class="mt-1 text-[12px] leading-5 text-zinc-500">
+              Khi tắt, người khác không thấy bạn online/last seen và bạn cũng không thấy trạng thái hoạt động của họ.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="inline-flex h-8 min-w-[54px] shrink-0 items-center justify-center rounded-full px-3 text-[12px] font-semibold transition disabled:cursor-wait disabled:opacity-60"
+            :class="activeStatusVisible ? 'bg-[#1877f2] text-white' : 'bg-zinc-200 text-zinc-600'"
+            :disabled="activeStatusLoading"
+            @click="toggleActiveStatusVisible"
+          >
+            <i
+              v-if="activeStatusLoading"
+              class="fa-solid fa-spinner fa-spin text-[11px]"
+            />
+            <span v-else>{{ activeStatusVisible ? 'Bật' : 'Tắt' }}</span>
+          </button>
+        </div>
+        <div class="divide-y divide-zinc-100">
+          <div class="flex items-center justify-between gap-3 px-4 py-3">
+            <div>
+              <p class="text-[13px] font-semibold text-zinc-900">Âm thanh thông báo</p>
+              <p class="text-[12px] text-zinc-500">Phát tiếng khi có tin nhắn mới.</p>
+            </div>
+            <a-switch
+              :checked="notificationSoundEnabled"
+              :loading="accountSettingSavingKey === 'notificationSoundEnabled'"
+              @change="value => patchAccountSetting('notificationSoundEnabled', value)"
+            />
+          </div>
+          <div class="flex items-center justify-between gap-3 px-4 py-3">
+            <div>
+              <p class="text-[13px] font-semibold text-zinc-900">Preview tin nhắn</p>
+              <p class="text-[12px] text-zinc-500">Hiển thị nội dung tin trong toast.</p>
+            </div>
+            <a-switch
+              :checked="messagePreviewEnabled"
+              :loading="accountSettingSavingKey === 'messagePreviewEnabled'"
+              @change="value => patchAccountSetting('messagePreviewEnabled', value)"
+            />
+          </div>
+          <div class="flex items-center justify-between gap-3 px-4 py-3">
+            <div>
+              <p class="text-[13px] font-semibold text-zinc-900">Quyền riêng tư đã xem</p>
+              <p class="text-[12px] text-zinc-500">Tắt thì bạn không gửi và không thấy trạng thái đã xem.</p>
+            </div>
+            <a-switch
+              :checked="readReceiptsEnabled"
+              :loading="accountSettingSavingKey === 'readReceiptsEnabled'"
+              @change="value => patchAccountSetting('readReceiptsEnabled', value)"
+            />
+          </div>
+          <div class="flex items-center justify-between gap-3 px-4 py-3">
+            <div>
+              <p class="text-[13px] font-semibold text-zinc-900">Hiện trạng thái đang nhập</p>
+              <p class="text-[12px] text-zinc-500">Tắt thì người khác không thấy bạn đang nhập.</p>
+            </div>
+            <a-switch
+              :checked="typingStatusVisible"
+              :loading="accountSettingSavingKey === 'typingStatusVisible'"
+              @change="value => patchAccountSetting('typingStatusVisible', value)"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section class="rounded-xl border border-zinc-200 bg-white p-4">
+        <label class="mb-2 block text-[13px] font-semibold text-zinc-900">
+          Ai có thể nhắn tin cho tôi
+        </label>
+        <a-select
+          :value="messageRequestsFrom"
+          class="w-full"
+          :loading="accountSettingSavingKey === 'messageRequestsFrom'"
+          @change="value => patchAccountSetting('messageRequestsFrom', value)"
+        >
+          <a-select-option value="everyone">Mọi người</a-select-option>
+          <a-select-option value="mutual_follow">Mutual follow</a-select-option>
+          <a-select-option value="following">Chỉ người tôi follow</a-select-option>
+        </a-select>
+        <p class="mt-2 text-[12px] leading-5 text-zinc-500">
+          Áp dụng cho chat 1-1 mới và gửi tin trong hội thoại 1-1 hiện có.
+        </p>
+      </section>
+
+      <NuxtLink
+        to="/account?tab=privacy"
+        class="flex items-center justify-between rounded-xl border border-zinc-200 bg-white p-4 text-zinc-900 transition hover:border-[#1877f2]/35 hover:bg-zinc-50"
+        @click="accountSettingsOpen = false"
+      >
+        <span class="flex items-center gap-3">
+          <i class="fa-solid fa-ban text-[14px] text-zinc-500" />
+          <span>
+            <span class="block text-[13px] font-semibold">Danh sách đã chặn</span>
+            <span class="block text-[12px] text-zinc-500">Quản lý tài khoản bạn đã block.</span>
+          </span>
+        </span>
+        <i class="fa-solid fa-chevron-right text-[12px] text-zinc-400" />
+      </NuxtLink>
+    </div>
+  </a-drawer>
   <ChatGroupDetailsDrawer
     v-if="active?.isGroup"
     ref="groupDrawerRef"
