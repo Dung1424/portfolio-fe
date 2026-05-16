@@ -42,30 +42,33 @@ const queryModel = computed({
     :class="mobileShowThread ? 'hidden md:flex' : 'flex flex-1 md:flex-none'"
   >
     <div class="border-b border-zinc-200/90 px-4 pb-3 pt-3">
-      <div class="flex items-center justify-between gap-3">
-        <h1 class="text-[18px] font-semibold tracking-tight text-zinc-900">
+      <div class="flex items-center justify-between gap-2">
+        <h1 class="text-[19px] font-bold tracking-tight text-zinc-900">
           Messages
         </h1>
-        <div class="flex items-center gap-2">
+        <div class="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
-            class="rounded-full bg-[#1877f2] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[#166fe5]"
+            class="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#1877f2] px-3 text-[12px] font-semibold text-white transition hover:bg-[#166fe5]"
             @click="emit('new-group')"
           >
-            Nhóm mới
+            <i class="fa-solid fa-user-group text-[11px]" />
+            <span>Nhóm mới</span>
           </button>
           <NuxtLink
             to="/account"
-            class="rounded-full bg-zinc-100 px-3 py-1.5 text-[12px] font-medium text-zinc-600 transition hover:bg-zinc-200/90"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200/90 hover:text-zinc-900"
+            aria-label="Account"
+            title="Account"
           >
-            Account
+            <i class="fa-regular fa-user text-[13px]" />
           </NuxtLink>
         </div>
       </div>
-      <div class="mt-3 flex gap-1 rounded-full bg-zinc-100/90 p-1">
+      <div class="mt-3 grid grid-cols-2 rounded-xl bg-zinc-100 p-0.5">
         <button
           type="button"
-          class="min-h-9 flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-[13px] font-semibold transition"
+          class="min-h-8 flex items-center justify-center gap-1.5 rounded-[10px] px-3 text-[12px] font-semibold transition"
           :class="
             listFolder === 'inbox'
               ? 'bg-white text-[#1877f2] shadow-sm'
@@ -82,7 +85,7 @@ const queryModel = computed({
         </button>
         <button
           type="button"
-          class="min-h-9 flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-[13px] font-semibold transition"
+          class="min-h-8 flex items-center justify-center gap-1.5 rounded-[10px] px-3 text-[12px] font-semibold transition"
           :class="
             listFolder === 'pending'
               ? 'bg-white text-[#1877f2] shadow-sm'
@@ -98,16 +101,16 @@ const queryModel = computed({
           >{{ pendingUnreadTotal > 99 ? '99+' : pendingUnreadTotal }}</span>
         </button>
       </div>
-      <label class="relative mt-4 block">
+      <label class="relative mt-3 block">
         <span class="sr-only">Search</span>
         <i
-          class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[13px] text-[#1877f2]/40"
+          class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-zinc-400"
         />
         <input
           v-model="queryModel"
           type="search"
           placeholder="Search people or messages"
-          class="w-full rounded-full border border-zinc-200/90 bg-zinc-50 py-2 pl-10 pr-4 text-[13px] text-zinc-900 placeholder:text-zinc-400 focus:border-[#1877f2]/40 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1877f2]/12"
+          class="h-9 w-full rounded-xl border border-zinc-200/90 bg-white py-0 pl-8 pr-3 text-[13px] text-zinc-900 placeholder:text-zinc-400 focus:border-[#1877f2]/40 focus:outline-none focus:ring-2 focus:ring-[#1877f2]/12"
         >
       </label>
     </div>

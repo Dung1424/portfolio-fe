@@ -150,7 +150,7 @@ defineExpose({ scrollRoot })
               ? 'w-full max-w-full shrink-0 sm:max-w-full flex flex-col items-center'
               : row.msg.me
                 ? 'flex flex-col items-end'
-                : '',
+                : ''
           ]"
         >
           <div class="relative group/message">
@@ -230,7 +230,164 @@ defineExpose({ scrollRoot })
               v-if="api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg)"
               class="w-full px-2 py-1.5 sm:px-3"
             >
+              <div
+                v-if="api.isGroupToolMessage(row.msg)"
+                class="mx-auto w-full max-w-[310px] overflow-hidden rounded-2xl border border-zinc-200 bg-white text-left text-zinc-900 shadow-sm"
+              >
+                <template v-if="row.msg.metadata?.toolType === 'poll'">
+                  <div class="px-3.5 py-3">
+                    <div class="mb-2 flex items-start gap-2">
+                      <span class="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#1877f2]/10 text-[#1877f2]">
+                        <i class="fa-solid fa-list-check text-[12px]" />
+                      </span>
+                      <div class="min-w-0 flex-1">
+                        <p class="text-[13px] font-bold leading-snug">
+                          {{ api.groupToolFromMessage(row.msg)?.question }}
+                        </p>
+                        <p class="mt-0.5 text-[11px] text-zinc-500">
+                          {{ api.groupToolFromMessage(row.msg)?.status === 'active' ? 'Mở đến' : 'Đã đóng' }}
+                          {{ api.formatToolDate(api.groupToolFromMessage(row.msg)?.deadlineAt) }}
+                        </p>
+                      </div>
+                    </div>
+                    <div class="space-y-1.5">
+                      <button
+                        v-for="option in api.groupToolFromMessage(row.msg)?.options || []"
+                        :key="option.id"
+                        type="button"
+                        class="relative w-full overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-left transition hover:border-[#1877f2]/45 hover:bg-[#1877f2]/5 disabled:cursor-not-allowed disabled:opacity-70"
+                        @click.stop="api.voteGroupPoll(api.groupToolFromMessage(row.msg), option.id)"
+                      >
+                        <span
+                          class="absolute inset-y-0 left-0 bg-[#1877f2]/12"
+                          :style="{ width: `${api.pollOptionPercent(api.groupToolFromMessage(row.msg), option)}%` }"
+                          aria-hidden="true"
+                        />
+                        <span class="relative flex items-center gap-2">
+                          <i
+                            class="text-[12px]"
+                            :class="api.pollOptionChecked(api.groupToolFromMessage(row.msg), option.id) ? 'fa-solid fa-circle-check text-[#1877f2]' : 'fa-regular fa-circle text-zinc-400'"
+                          />
+                          <span class="min-w-0 flex-1 truncate text-[13px] font-medium">{{ option.text }}</span>
+                          <span
+                            v-if="option.voterUserIds?.length"
+                            class="flex shrink-0 flex-row-reverse items-center"
+                          >
+                            <span
+                              v-for="(uid, ui) in option.voterUserIds.slice(0, 3)"
+                              :key="uid"
+                              class="flex h-5 w-5 items-center justify-center rounded-full border-2 border-white text-[8px] font-bold text-white"
+                              :class="api.fallbackClass(uid)"
+                              :style="{ marginRight: ui > 0 ? '-7px' : '0' }"
+                            >
+                              {{ api.initials(`U ${String(uid).replace(/-/g, '').slice(0, 4)}`).slice(0, 1) }}
+                            </span>
+                          </span>
+                          <span class="shrink-0 text-[12px] font-semibold text-zinc-500">{{ option.voteCount || 0 }}</span>
+                        </span>
+                      </button>
+                    </div>
+                    <div class="mt-3 flex items-center justify-between border-t border-zinc-100 pt-2">
+                      <span class="text-[11px] text-zinc-500">
+                        {{ api.groupToolFromMessage(row.msg)?.totalVotes || 0 }} lượt bình chọn
+                      </span>
+                      <button
+                        v-if="api.groupToolFromMessage(row.msg)?.allowAddOptions && api.groupToolFromMessage(row.msg)?.status === 'active'"
+                        type="button"
+                        class="text-[12px] font-bold text-[#1877f2]"
+                        @click.stop="api.addGroupPollOptionFromCard(api.groupToolFromMessage(row.msg))"
+                      >
+                        Thêm lựa chọn
+                      </button>
+                    </div>
+                  </div>
+                </template>
+                <template v-else-if="row.msg.metadata?.toolType === 'reminder'">
+                  <div class="px-3.5 py-3">
+                    <div class="flex items-start gap-2">
+                      <span class="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                        <i class="fa-regular fa-bell text-[12px]" />
+                      </span>
+                      <div class="min-w-0 flex-1">
+                        <p class="text-[13px] font-bold leading-snug">
+                          {{ api.groupToolFromMessage(row.msg)?.title }}
+                        </p>
+                        <p class="mt-0.5 text-[12px] text-zinc-500">
+                          {{ api.formatToolDate(api.groupToolFromMessage(row.msg)?.remindAt) }}
+                        </p>
+                      </div>
+                      <span class="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-bold uppercase text-zinc-500">
+                        {{ api.groupToolFromMessage(row.msg)?.status }}
+                      </span>
+                    </div>
+                    <p
+                      v-if="api.groupToolFromMessage(row.msg)?.description"
+                      class="mt-2 whitespace-pre-wrap break-words text-[12px] leading-snug text-zinc-600"
+                    >
+                      {{ api.groupToolFromMessage(row.msg)?.description }}
+                    </p>
+                    <button
+                      v-if="api.groupToolFromMessage(row.msg)?.status === 'scheduled'"
+                      type="button"
+                      class="mt-3 w-full border-t border-zinc-100 pt-2 text-center text-[12px] font-bold text-rose-600"
+                      @click.stop="api.cancelGroupReminder(api.groupToolFromMessage(row.msg))"
+                    >
+                      Hủy nhắc hẹn
+                    </button>
+                  </div>
+                </template>
+                <template v-else-if="row.msg.metadata?.toolType === 'note'">
+                  <div class="px-3.5 py-3">
+                    <div
+                      v-if="api.groupToolFromMessage(row.msg)?.deleted"
+                      class="flex items-center gap-2 text-[12px] italic text-zinc-500"
+                    >
+                      <i class="fa-regular fa-note-sticky" />
+                      <span>Ghi chú đã xóa</span>
+                    </div>
+                    <div v-else class="flex items-start gap-2">
+                      <span class="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                        <i class="fa-regular fa-note-sticky text-[12px]" />
+                      </span>
+                      <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5">
+                          <p class="truncate text-[13px] font-bold leading-snug">
+                            {{ api.groupToolFromMessage(row.msg)?.title }}
+                          </p>
+                          <i
+                            v-if="api.groupToolFromMessage(row.msg)?.pinned"
+                            class="fa-solid fa-thumbtack text-[10px] text-emerald-600"
+                          />
+                        </div>
+                        <p
+                          v-if="api.groupToolFromMessage(row.msg)?.content"
+                          class="mt-1 line-clamp-4 whitespace-pre-wrap break-words text-[12px] leading-snug text-zinc-600"
+                        >
+                          {{ api.groupToolFromMessage(row.msg)?.content }}
+                        </p>
+                        <div class="mt-3 flex items-center gap-2 border-t border-zinc-100 pt-2">
+                          <button
+                            type="button"
+                            class="text-[12px] font-bold text-[#1877f2]"
+                            @click.stop="api.editGroupNoteFromCard(api.groupToolFromMessage(row.msg))"
+                          >
+                            Sửa
+                          </button>
+                          <button
+                            type="button"
+                            class="text-[12px] font-bold text-rose-600"
+                            @click.stop="api.deleteGroupNoteFromCard(api.groupToolFromMessage(row.msg))"
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
               <p
+                v-else
                 class="mx-auto max-w-md whitespace-pre-wrap break-words text-center text-[12px] font-normal leading-snug text-zinc-500"
               >
                 {{
@@ -266,20 +423,20 @@ defineExpose({ scrollRoot })
             >
               <div
                 v-if="api.isCallLogMessage(row.msg)"
-                class="w-[220px] max-w-full"
+                class="w-[170px] max-w-full"
               >
-                <div class="px-4 py-3">
-                  <p class="text-[15px] font-bold leading-snug">
+                <div class="px-3 py-2.5">
+                  <p class="text-[13px] font-bold leading-snug">
                     {{ api.callLogCardTitle(row.msg.metadata, row.msg.me) }}
                   </p>
-                  <p class="mt-1 flex items-center gap-2 text-[14px] text-zinc-600">
-                    <i :class="api.callLogIcon(row.msg.metadata)" />
+                  <p class="mt-0.5 flex items-center gap-1.5 text-[12px] text-zinc-600">
+                    <i class="text-[11px]" :class="api.callLogIcon(row.msg.metadata)" />
                     <span>{{ api.callLogDuration(row.msg.metadata) || api.callLogTitle(row.msg.metadata) }}</span>
                   </p>
                 </div>
                 <button
                   type="button"
-                  class="block w-full border-t border-black/10 px-4 py-2.5 text-center text-[14px] font-bold uppercase text-[#078bdc] transition hover:bg-white/35"
+                  class="block w-full border-t border-black/10 px-3 py-1.5 text-center text-[12px] font-bold uppercase text-[#078bdc] transition hover:bg-white/35"
                 >
                   Gọi lại
                 </button>
@@ -321,10 +478,62 @@ defineExpose({ scrollRoot })
                 loading="lazy"
                 decoding="async"
               >
+              <div
+                v-if="!row.msg.recalledAt && row.msg.fileAttachments?.length"
+                class="space-y-2"
+                :class="row.msg.imageUrl ? 'mt-2' : ''"
+              >
+                <div
+                  v-for="file in row.msg.fileAttachments"
+                  :key="file.objectKey || file.originalName"
+                  class="flex w-[260px] max-w-full items-center gap-3 rounded-xl border px-3 py-2.5"
+                  :class="row.msg.me ? 'border-white/20 bg-white/10 text-white' : 'border-zinc-200 bg-zinc-50 text-zinc-900'"
+                >
+                  <span
+                    class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                    :class="row.msg.me ? 'bg-white text-zinc-800' : 'bg-white ring-1 ring-zinc-200'"
+                  >
+                    <i class="text-[20px]" :class="api.chatFileIcon(file)" />
+                  </span>
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-[13px] font-bold">
+                      {{ file.originalName || 'File' }}
+                    </p>
+                    <p
+                      class="mt-0.5 text-[11px]"
+                      :class="row.msg.me ? 'text-white/75' : 'text-zinc-500'"
+                    >
+                      {{ api.formatFileSize(file.size) }} · {{ api.chatFileStatusText(file) }}
+                    </p>
+                  </div>
+                  <a
+                    v-if="api.chatFileCanDownload(file)"
+                    :href="file.url"
+                    target="_blank"
+                    rel="noopener"
+                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition"
+                    :class="row.msg.me ? 'bg-white/15 text-white hover:bg-white/25' : 'bg-white text-[#1877f2] ring-1 ring-zinc-200 hover:bg-[#1877f2]/5'"
+                    title="Tải xuống"
+                    @click.stop
+                  >
+                    <i class="fa-solid fa-download text-[12px]" />
+                  </a>
+                  <span
+                    v-else
+                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                    :class="file.status === 'blocked' ? 'bg-rose-100 text-rose-600' : 'bg-zinc-100 text-zinc-400'"
+                  >
+                    <i
+                      class="text-[12px]"
+                      :class="file.status === 'blocked' ? 'fa-solid fa-ban' : 'fa-solid fa-shield-halved'"
+                    />
+                  </span>
+                </div>
+              </div>
               <p
                 v-if="!row.msg.recalledAt && !api.isCallLogMessage(row.msg) && row.msg.text && !row.msg.isSticker"
                 class="whitespace-pre-wrap break-words"
-                :class="row.msg.imageUrl ? 'mt-2' : ''"
+                :class="row.msg.imageUrl || row.msg.fileAttachments?.length ? 'mt-2' : ''"
               >
                 {{ row.msg.text }}
               </p>
@@ -346,9 +555,46 @@ defineExpose({ scrollRoot })
                 !peer.isGroup
                   && api.shouldShowOutgoingReceipt(peer.messages, row.msg.id, peer)
                   && api.receiptLabel(peer, row.msg.id)
+                  && !api.directSeenDisplay(peer, row.msg.id).length
               "
             >· {{ api.receiptLabel(peer, row.msg.id) }}</span>
           </p>
+          <div
+            v-if="
+              row.showMeta
+                && row.msg.me
+                && !(api.isSystemMessage(row.msg) && !api.isCallLogMessage(row.msg))
+                && !peer.isGroup
+                && api.shouldShowOutgoingReceipt(peer.messages, row.msg.id, peer)
+                && api.directSeenDisplay(peer, row.msg.id).length
+            "
+            class="mt-1 flex justify-end pr-1"
+          >
+            <div
+              class="flex flex-row-reverse items-center pl-2"
+              aria-label="Đã xem bởi"
+            >
+              <div
+                v-for="s in api.directSeenDisplay(peer, row.msg.id)"
+                :key="s.id"
+                class="relative h-6 w-6 shrink-0 rounded-full border-2 border-[#f0f2f5] bg-zinc-200"
+              >
+                <img
+                  v-if="s.url"
+                  :src="s.url"
+                  alt=""
+                  class="h-full w-full rounded-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                >
+                <span
+                  v-else
+                  class="flex h-full w-full items-center justify-center text-[9px] font-bold text-white"
+                  :class="api.fallbackClass(s.id)"
+                >{{ s.initials.slice(0, 2) }}</span>
+              </div>
+            </div>
+          </div>
           <div
             v-if="
               row.showMeta

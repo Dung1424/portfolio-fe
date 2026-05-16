@@ -1,10 +1,11 @@
 import { ref, computed } from 'vue'
 
-export const STICKER_PACK_IDS = ['sticker1', 'sticker2']
+export const STICKER_PACK_IDS = ['sticker1', 'sticker2', 'sticker3']
 
 export const STICKER_PACK_LABELS = {
   sticker1: 'Loopy',
   sticker2: 'Capybara',
+  sticker3: 'Denia'
 }
 
 const STICKER_DISCOVERY_MAX = 80
@@ -23,7 +24,7 @@ async function discoverStickerPack(packId) {
       `/${packId}/${i}.jpg`,
       `/${packId}/${i}.jpeg`,
       `/${packId}/${i}.png`,
-      `/${packId}/${i}.webp`,
+      `/${packId}/${i}.webp`
     ]
     let foundForIndex = false
     for (const url of candidates) {
@@ -39,7 +40,7 @@ async function discoverStickerPack(packId) {
         result.push({
           id: `${packId}-${i}-${result.length + 1}`,
           pack: packId,
-          url,
+          url
         })
         foundForIndex = true
         break
@@ -75,10 +76,12 @@ export function useChatStickerPicker(deps) {
   const stickerPackMap = ref({
     sticker1: [],
     sticker2: [],
+    sticker3: []
   })
   const stickerPackLoaded = ref({
     sticker1: false,
     sticker2: false,
+    sticker3: false
   })
 
   async function loadStickerPack(packId) {
@@ -136,6 +139,6 @@ export function useChatStickerPicker(deps) {
     toggleStickerPicker,
     selectStickerPack,
     onStickerImageError,
-    sendStickerMessage,
+    sendStickerMessage
   }
 }

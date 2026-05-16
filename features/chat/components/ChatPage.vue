@@ -4,6 +4,7 @@ import { Modal, notification } from 'ant-design-vue'
 import { useChatMessageNotify } from '~/features/chat/composables/useChatMessageNotify.js'
 import { useChatConversationList } from '~/features/chat/composables/useChatConversationList.js'
 import { useChatCall } from '~/features/chat/composables/useChatCall.js'
+import { useLiveKitGroupCall } from '~/features/chat/composables/useLiveKitGroupCall.js'
 import { useChatMessaging } from '~/features/chat/composables/useChatMessaging.js'
 import { useConversationTyping } from '~/features/chat/composables/useConversationTyping.ts'
 import { useResolvePublicMediaUrl } from '~/composables/useMediaBase'
@@ -19,6 +20,7 @@ import ChatPinnedMessagesSection from '~/features/chat/components/ChatPinnedMess
 import ChatMessageList from '~/features/chat/components/ChatMessageList.vue'
 import ChatComposer from '~/features/chat/components/ChatComposer.vue'
 import ChatGroupDetailsDrawer from '~/features/chat/components/ChatGroupDetailsDrawer.vue'
+import ChatGroupCallStage from '~/features/chat/components/ChatGroupCallStage.vue'
 import { useChatThreadSearch } from '~/features/chat/composables/useChatThreadSearch.js'
 import { useChatStickerPicker } from '~/features/chat/composables/useChatStickerPicker.js'
 import {
@@ -107,6 +109,7 @@ const {
   draft,
   replyTo,
   pendingChatImage,
+  pendingChatFile,
   messagesScrollEl,
   highlightedMessageId,
   active,
@@ -122,10 +125,12 @@ const {
   refreshPinnedMessages,
   onConversationRead,
   clearPendingChatImage,
+  clearPendingChatFile,
   startReplyToMessage: startReplyToMessageInner,
   clearReplyToMessage,
   jumpToMessage,
   onChatImageSelected,
+  onChatFileSelected,
   send: postChatMessage,
   sendSticker: postChatSticker,
 } = messaging
@@ -161,6 +166,25 @@ const {
   toggleMute,
   toggleCamera,
 } = call
+
+const groupCall = useLiveKitGroupCall(active, myUserId, getChatUserDisplay)
+const {
+  groupCallSession,
+  incomingGroupCall,
+  groupCallState,
+  groupCallTiles,
+  groupCallDurationSeconds,
+  groupCallMicEnabled,
+  groupCallCameraEnabled,
+  isGroupCalling,
+  showIncomingGroupCall,
+  startGroupCall,
+  joinGroupCall,
+  leaveGroupCall,
+  dismissIncomingGroupCall,
+  toggleGroupCallMic,
+  toggleGroupCallCamera,
+} = groupCall
 const showJumpToLatest = ref(false)
 const JUMP_TO_LATEST_THRESHOLD_PX = 180
 
@@ -245,6 +269,13 @@ const callDurationLabel = computed(() => {
   return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 })
 
+const groupCallDurationLabel = computed(() => {
+  const total = Math.max(0, Number(groupCallDurationSeconds.value) || 0)
+  const min = Math.floor(total / 60)
+  const sec = total % 60
+  return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+})
+
 const showIncomingCallModal = computed(() => callState.value === 'incoming_ringing' && Boolean(incomingCall.value))
 const showCallStage = computed(() => isCalling.value && callState.value !== 'incoming_ringing')
 const incomingRingCountdownLabel = computed(() => {
@@ -270,6 +301,13 @@ const incomingConversation = computed(() => {
     return null
   }
   return conversations.value.find(c => String(c.peerUserId || '') === peerId) || null
+})
+const incomingGroupConversation = computed(() => {
+  const cid = incomingGroupCall.value?.conversationId
+  if (!cid) {
+    return null
+  }
+  return conversations.value.find(c => String(c.id) === String(cid)) || null
 })
 
 async function fetchIncomingCallerProfile(peerUserId) {
@@ -1040,11 +1078,26 @@ const messageListApi = computed(() => ({
   toggleOutgoingReceiptDetail,
   shouldShowOutgoingReceipt,
   receiptLabel,
+  directSeenDisplay,
   groupSeenDisplay,
   incomingAvatarKey,
   groupMessageSender,
   openIncomingSenderProfile,
   groupEventLineText,
+  isGroupToolMessage,
+  groupToolFromMessage,
+  formatToolDate,
+  formatFileSize,
+  chatFileIcon,
+  chatFileStatusText,
+  chatFileCanDownload,
+  pollOptionPercent,
+  pollOptionChecked,
+  voteGroupPoll,
+  addGroupPollOptionFromCard,
+  cancelGroupReminder,
+  editGroupNoteFromCard,
+  deleteGroupNoteFromCard,
 }))
 
 function shouldShowOutgoingReceipt(messages, messageId, conv) {
@@ -1076,6 +1129,23 @@ function shouldShowOutgoingReceipt(messages, messageId, conv) {
 
 function receiptLabel(conv, messageId) {
   return outgoingMessageReceiptLabel(conv, messageId, myUserId.value)
+}
+
+function directSeenDisplay(conv, messageId) {
+  if (!conv || conv.isGroup) {
+    return []
+  }
+  if (outgoingMessageReceiptLabel(conv, messageId, myUserId.value) !== 'Đã xem') {
+    return []
+  }
+  const id = conv.peerUserId != null ? String(conv.peerUserId) : String(conv.id || 'peer')
+  const url = conv.peerAvatarUrl || ''
+  const name = conv.name || 'User'
+  return [{
+    id,
+    url,
+    initials: initials(name),
+  }]
 }
 
 function peerLastSeenSubtitle(conv) {
@@ -1116,11 +1186,19 @@ function startAudioCall() {
   if (!messagingAllowed.value) {
     return
   }
+  if (active.value?.isGroup) {
+    startGroupCall(CALL_TYPE.AUDIO)
+    return
+  }
   startOutgoingCall(CALL_TYPE.AUDIO)
 }
 
 function startVideoCall() {
   if (!messagingAllowed.value) {
+    return
+  }
+  if (active.value?.isGroup) {
+    startGroupCall(CALL_TYPE.VIDEO)
     return
   }
   startOutgoingCall(CALL_TYPE.VIDEO)
@@ -1147,6 +1225,419 @@ function initials(name) {
 
 const groupSeenAvatarByUserId = ref({})
 const groupSeenAvatarFetched = new Set()
+const groupToolCache = ref({})
+const createPollOpen = ref(false)
+const createPollSubmitting = ref(false)
+const pollQuestion = ref('')
+const pollOptions = ref(['', ''])
+const pollDeadline = ref('')
+const pollAllowMultiple = ref(false)
+const pollAllowAddOptions = ref(true)
+const createReminderOpen = ref(false)
+const createReminderSubmitting = ref(false)
+const reminderTitle = ref('')
+const reminderDescription = ref('')
+const reminderAt = ref('')
+const reminderTarget = ref('all')
+const reminderTargetUserIds = ref([])
+const reminderMemberRows = ref([])
+const createNoteOpen = ref(false)
+const createNoteSubmitting = ref(false)
+const noteTitle = ref('')
+const noteContent = ref('')
+const notePinned = ref(false)
+
+function groupToolKey(type, id) {
+  return `${String(type || '')}:${String(id || '')}`
+}
+
+function rememberGroupTool(type, tool) {
+  if (!type || !tool?.id) {
+    return
+  }
+  groupToolCache.value = {
+    ...groupToolCache.value,
+    [groupToolKey(type, tool.id)]: tool,
+  }
+}
+
+function localDateTimeValue(date) {
+  const d = date instanceof Date ? date : new Date(date)
+  if (!Number.isFinite(d.getTime())) {
+    return ''
+  }
+  const pad = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function futureDateTimeValue(minutes) {
+  return localDateTimeValue(new Date(Date.now() + minutes * 60_000))
+}
+
+function groupToolFromMessage(msg) {
+  const meta = msg?.metadata || {}
+  const type = meta.toolType ? String(meta.toolType) : ''
+  const id = meta.toolId ? String(meta.toolId) : ''
+  if (!type || !id) {
+    return null
+  }
+  return groupToolCache.value[groupToolKey(type, id)] || meta.toolSnapshot || null
+}
+
+function isGroupToolMessage(msg) {
+  return Boolean(groupToolFromMessage(msg))
+}
+
+function formatToolDate(value) {
+  const d = value ? new Date(value) : null
+  if (!d || !Number.isFinite(d.getTime())) {
+    return ''
+  }
+  return d.toLocaleString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+  })
+}
+
+function formatFileSize(bytes) {
+  const n = Number(bytes)
+  if (!Number.isFinite(n) || n <= 0) {
+    return '0 B'
+  }
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = n
+  let index = 0
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024
+    index += 1
+  }
+  return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`
+}
+
+function chatFileIcon(file) {
+  const ext = String(file?.extension || '').toLowerCase()
+  if (['doc', 'docx'].includes(ext)) return 'fa-regular fa-file-word text-blue-600'
+  if (['xls', 'xlsx'].includes(ext)) return 'fa-regular fa-file-excel text-emerald-600'
+  if (['ppt', 'pptx'].includes(ext)) return 'fa-regular fa-file-powerpoint text-orange-600'
+  if (['mp4', 'mov'].includes(ext)) return 'fa-solid fa-file-video text-violet-600'
+  return 'fa-regular fa-file-lines text-zinc-600'
+}
+
+function chatFileStatusText(file) {
+  if (file?.status === 'ready') return 'Sẵn sàng tải xuống'
+  if (file?.status === 'blocked') return 'File bị chặn vì không an toàn'
+  if (file?.status === 'failed') return 'Kiểm tra file thất bại'
+  return 'Đang kiểm tra an toàn...'
+}
+
+function chatFileCanDownload(file) {
+  return file?.status === 'ready' && Boolean(file?.url)
+}
+
+function pollOptionPercent(tool, option) {
+  const total = Number(tool?.totalVotes || 0)
+  if (!total) {
+    return 0
+  }
+  return Math.round((Number(option?.voteCount || 0) / total) * 100)
+}
+
+function pollOptionChecked(tool, optionId) {
+  return Array.isArray(tool?.myOptionIds) && tool.myOptionIds.map(String).includes(String(optionId))
+}
+
+function openCreatePollModal() {
+  if (!active.value?.isGroup || !messagingAllowed.value) {
+    return
+  }
+  pollQuestion.value = ''
+  pollOptions.value = ['', '']
+  pollDeadline.value = futureDateTimeValue(60)
+  pollAllowMultiple.value = false
+  pollAllowAddOptions.value = true
+  createPollOpen.value = true
+}
+
+function addPollOptionInput() {
+  if (pollOptions.value.length >= 20) {
+    return
+  }
+  pollOptions.value = [...pollOptions.value, '']
+}
+
+function removePollOptionInput(index) {
+  if (pollOptions.value.length <= 2) {
+    return
+  }
+  pollOptions.value = pollOptions.value.filter((_, i) => i !== index)
+}
+
+async function submitCreatePoll() {
+  const cid = active.value?.id
+  const question = pollQuestion.value.trim()
+  const options = pollOptions.value.map(x => String(x || '').trim()).filter(Boolean)
+  if (!cid || !active.value?.isGroup) {
+    return
+  }
+  if (!question || options.length < 2) {
+    notification.warning({ message: 'Nhập chủ đề và ít nhất 2 lựa chọn' })
+    return
+  }
+  createPollSubmitting.value = true
+  try {
+    const res = await chatApi.createGroupPoll(cid, {
+      question,
+      options,
+      deadlineAt: new Date(pollDeadline.value).toISOString(),
+      allowMultiple: pollAllowMultiple.value,
+      allowAddOptions: pollAllowAddOptions.value,
+    })
+    const d = unwrapChatData(res)
+    rememberGroupTool('poll', d?.poll)
+    createPollOpen.value = false
+    notification.success({ message: 'Đã tạo bình chọn' })
+  }
+  catch (e) {
+    console.error('create poll', e)
+    notification.error({
+      message: 'Bình chọn',
+      description: e?.response?.data?.message || 'Không tạo được bình chọn.',
+    })
+  }
+  finally {
+    createPollSubmitting.value = false
+  }
+}
+
+async function voteGroupPoll(tool, optionId) {
+  const cid = active.value?.id || tool?.conversationId
+  if (!cid || !tool?.id) {
+    return
+  }
+  if (tool.status !== 'active') {
+    notification.warning({
+      message: 'Bình chọn đã hết hạn',
+      description: 'Poll này đã đóng nên không thể tiếp tục vote.',
+    })
+    return
+  }
+  const cur = Array.isArray(tool.myOptionIds) ? tool.myOptionIds.map(String) : []
+  const oid = String(optionId)
+  const next = tool.allowMultiple
+    ? (cur.includes(oid) ? cur.filter(x => x !== oid) : [...cur, oid])
+    : [oid]
+  if (!next.length) {
+    notification.warning({ message: 'Chọn ít nhất một lựa chọn' })
+    return
+  }
+  try {
+    const res = await chatApi.voteGroupPoll(cid, tool.id, next)
+    const d = unwrapChatData(res)
+    rememberGroupTool('poll', d?.poll)
+  }
+  catch (e) {
+    console.error('vote poll', e)
+    notification.error({
+      message: 'Bình chọn',
+      description: e?.response?.status === 409
+        ? 'Bình chọn đã hết hạn hoặc đã đóng.'
+        : (e?.response?.data?.message || 'Không gửi được vote.'),
+    })
+  }
+}
+
+async function addGroupPollOptionFromCard(tool) {
+  const text = window.prompt('Thêm lựa chọn')
+  if (!text?.trim()) {
+    return
+  }
+  try {
+    const res = await chatApi.addGroupPollOption(active.value?.id || tool.conversationId, tool.id, text.trim())
+    const d = unwrapChatData(res)
+    rememberGroupTool('poll', d?.poll)
+  }
+  catch (e) {
+    console.error('add poll option', e)
+    notification.error({
+      message: 'Bình chọn',
+      description: e?.response?.data?.message || 'Không thêm được lựa chọn.',
+    })
+  }
+}
+
+async function openCreateReminderModal() {
+  if (!active.value?.isGroup || !messagingAllowed.value) {
+    return
+  }
+  reminderTitle.value = ''
+  reminderDescription.value = ''
+  reminderAt.value = futureDateTimeValue(30)
+  reminderTarget.value = 'all'
+  reminderTargetUserIds.value = []
+  reminderMemberRows.value = []
+  for (const p of active.value.participants || []) {
+    if (!p?.userId || p.leftAt || p.removedByAdminAt) {
+      continue
+    }
+    const uid = String(p.userId)
+    const mini = await getChatUserDisplay(uid)
+    reminderMemberRows.value.push({ id: uid, ...mini })
+  }
+  createReminderOpen.value = true
+}
+
+function toggleReminderTargetUser(userId) {
+  const id = String(userId)
+  const cur = reminderTargetUserIds.value.map(String)
+  reminderTargetUserIds.value = cur.includes(id)
+    ? cur.filter(x => x !== id)
+    : [...cur, id]
+}
+
+async function submitCreateReminder() {
+  const cid = active.value?.id
+  const title = reminderTitle.value.trim()
+  if (!cid || !active.value?.isGroup || !title) {
+    notification.warning({ message: 'Nhập tiêu đề nhắc hẹn' })
+    return
+  }
+  createReminderSubmitting.value = true
+  try {
+    const res = await chatApi.createGroupReminder(cid, {
+      title,
+      description: reminderDescription.value.trim(),
+      remindAt: new Date(reminderAt.value).toISOString(),
+      target: reminderTarget.value,
+      targetUserIds: reminderTarget.value === 'members' ? reminderTargetUserIds.value : [],
+    })
+    const d = unwrapChatData(res)
+    rememberGroupTool('reminder', d?.reminder)
+    createReminderOpen.value = false
+    notification.success({ message: 'Đã tạo nhắc hẹn' })
+  }
+  catch (e) {
+    console.error('create reminder', e)
+    notification.error({
+      message: 'Nhắc hẹn',
+      description: e?.response?.data?.message || 'Không tạo được nhắc hẹn.',
+    })
+  }
+  finally {
+    createReminderSubmitting.value = false
+  }
+}
+
+async function cancelGroupReminder(tool) {
+  if (!tool?.id || tool.status !== 'scheduled') {
+    return
+  }
+  try {
+    const res = await chatApi.cancelGroupReminder(active.value?.id || tool.conversationId, tool.id)
+    const d = unwrapChatData(res)
+    rememberGroupTool('reminder', d?.reminder)
+  }
+  catch (e) {
+    console.error('cancel reminder', e)
+    notification.error({
+      message: 'Nhắc hẹn',
+      description: e?.response?.data?.message || 'Không hủy được nhắc hẹn.',
+    })
+  }
+}
+
+function openCreateNoteModal() {
+  if (!active.value?.isGroup || !messagingAllowed.value) {
+    return
+  }
+  noteTitle.value = ''
+  noteContent.value = ''
+  notePinned.value = false
+  createNoteOpen.value = true
+}
+
+async function submitCreateNote() {
+  const cid = active.value?.id
+  const title = noteTitle.value.trim()
+  if (!cid || !active.value?.isGroup || !title) {
+    notification.warning({ message: 'Nhập tiêu đề ghi chú' })
+    return
+  }
+  createNoteSubmitting.value = true
+  try {
+    const res = await chatApi.createGroupNote(cid, {
+      title,
+      content: noteContent.value.trim(),
+      pinned: notePinned.value,
+    })
+    const d = unwrapChatData(res)
+    rememberGroupTool('note', d?.note)
+    createNoteOpen.value = false
+    notification.success({ message: 'Đã tạo ghi chú' })
+  }
+  catch (e) {
+    console.error('create note', e)
+    notification.error({
+      message: 'Ghi chú',
+      description: e?.response?.data?.message || 'Không tạo được ghi chú.',
+    })
+  }
+  finally {
+    createNoteSubmitting.value = false
+  }
+}
+
+async function editGroupNoteFromCard(tool) {
+  if (!tool?.id || tool.deleted) {
+    return
+  }
+  const title = window.prompt('Tiêu đề ghi chú', tool.title || '')
+  if (title == null) {
+    return
+  }
+  const content = window.prompt('Nội dung ghi chú', tool.content || '')
+  if (content == null) {
+    return
+  }
+  try {
+    const res = await chatApi.updateGroupNote(active.value?.id || tool.conversationId, tool.id, {
+      title: title.trim(),
+      content: content.trim(),
+      pinned: Boolean(tool.pinned),
+    })
+    const d = unwrapChatData(res)
+    rememberGroupTool('note', d?.note)
+  }
+  catch (e) {
+    console.error('edit note', e)
+    notification.error({
+      message: 'Ghi chú',
+      description: e?.response?.data?.message || 'Không sửa được ghi chú.',
+    })
+  }
+}
+
+async function deleteGroupNoteFromCard(tool) {
+  if (!tool?.id || tool.deleted) {
+    return
+  }
+  const ok = await confirmTitleHtml('Xóa ghi chú nhóm này?')
+  if (!ok) {
+    return
+  }
+  try {
+    await chatApi.deleteGroupNote(active.value?.id || tool.conversationId, tool.id)
+    rememberGroupTool('note', { ...tool, deleted: true })
+  }
+  catch (e) {
+    console.error('delete note', e)
+    notification.error({
+      message: 'Ghi chú',
+      description: e?.response?.data?.message || 'Không xóa được ghi chú.',
+    })
+  }
+}
 
 async function ensureAvatarForSeenUser(uid) {
   const id = String(uid)
@@ -1603,6 +2094,27 @@ function onGroupSocketMemberLeft(payload) {
   void handleGroupConversationRefresh(payload?.conversationId)
 }
 
+function onGroupToolUpdated(payload) {
+  const type = payload?.toolType ? String(payload.toolType) : ''
+  const tool = payload?.tool
+  if (type && tool?.id) {
+    rememberGroupTool(type, tool)
+  }
+}
+
+function onGroupReminderFired(payload) {
+  const reminder = payload?.reminder
+  if (reminder?.id) {
+    rememberGroupTool('reminder', reminder)
+  }
+  if (payload?.conversationId && String(payload.conversationId) === String(selectedId.value || '')) {
+    notification.info({
+      message: 'Nhắc hẹn nhóm',
+      description: reminder?.title || 'Đến giờ nhắc hẹn.',
+    })
+  }
+}
+
 async function onDrawerSaveGroupName(name) {
   const cid = active.value?.id
   const n = typeof name === 'string' ? name.trim() : ''
@@ -1756,6 +2268,7 @@ watch(selectedId, async (id, oldId) => {
   clearMessageActionHideTimer()
   clearReplyToMessage()
   clearPendingChatImage()
+  clearPendingChatFile()
   clearReadDebounceTimer()
 
   if (oldId != null && String(oldId) !== String(id ?? '')) {
@@ -1850,6 +2363,8 @@ onMounted(async () => {
     s.on('group:updated', onGroupSocketUpdated)
     s.on('group:admin-transferred', onGroupSocketAdminTransferred)
     s.on('group:member-left', onGroupSocketMemberLeft)
+    s.on('group-tool:updated', onGroupToolUpdated)
+    s.on('group-reminder:fired', onGroupReminderFired)
     s.on('presence:update', onPresenceUpdate)
     socketConnectJoin = resolveSocketConnectJoin
     s.on('connect', socketConnectJoin)
@@ -1869,6 +2384,7 @@ onUnmounted(() => {
   clearMessageActionHideTimer()
   clearThreadSearchDebounce()
   clearPendingChatImage()
+  clearPendingChatFile()
   clearFolderUnreadDebounce()
   clearReadDebounceTimer()
   stopPresenceHeartbeat()
@@ -1883,6 +2399,8 @@ onUnmounted(() => {
     s.off('group:updated', onGroupSocketUpdated)
     s.off('group:admin-transferred', onGroupSocketAdminTransferred)
     s.off('group:member-left', onGroupSocketMemberLeft)
+    s.off('group-tool:updated', onGroupToolUpdated)
+    s.off('group-reminder:fired', onGroupReminderFired)
     s.off('presence:update', onPresenceUpdate)
     s.off('connect', socketConnectJoin)
   }
@@ -1943,6 +2461,46 @@ onUnmounted(() => {
             class="inline-flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 text-xl text-white shadow-lg transition hover:scale-105 hover:bg-emerald-600"
             aria-label="Accept call"
             @click="acceptIncomingCall()"
+          >
+            <i class="fa-solid fa-phone" />
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="showIncomingGroupCall && incomingGroupCall"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/70 px-4 backdrop-blur-sm"
+    >
+      <div class="w-full max-w-md rounded-[28px] border border-white/15 bg-gradient-to-b from-zinc-900 to-zinc-950 p-6 text-white shadow-2xl">
+        <p class="text-center text-[13px] uppercase tracking-[0.18em] text-zinc-400">
+          Cuộc gọi {{ incomingGroupCall.callType === 'audio' ? 'thoại' : 'video' }} nhóm
+        </p>
+        <div class="mt-5 flex flex-col items-center text-center">
+          <div class="flex h-24 w-24 items-center justify-center rounded-full bg-white/10 text-[30px]">
+            <i :class="incomingGroupCall.callType === 'audio' ? 'fa-solid fa-phone' : 'fa-solid fa-video'" />
+          </div>
+          <p class="mt-4 text-[24px] font-semibold leading-tight">
+            {{ incomingGroupConversation?.name || active?.name || 'Nhóm chat' }}
+          </p>
+          <p class="mt-1 text-[13px] text-zinc-400">
+            Một thành viên đang bắt đầu cuộc gọi nhóm.
+          </p>
+        </div>
+        <div class="mt-8 flex items-center justify-center gap-8">
+          <button
+            type="button"
+            class="inline-flex h-16 w-16 items-center justify-center rounded-full bg-rose-500 text-xl text-white shadow-lg transition hover:scale-105 hover:bg-rose-600"
+            aria-label="Bỏ qua cuộc gọi nhóm"
+            @click="dismissIncomingGroupCall"
+          >
+            <i class="fa-solid fa-phone-slash" />
+          </button>
+          <button
+            type="button"
+            class="inline-flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 text-xl text-white shadow-lg transition hover:scale-105 hover:bg-emerald-600"
+            aria-label="Tham gia cuộc gọi nhóm"
+            @click="joinGroupCall(incomingGroupCall)"
           >
             <i class="fa-solid fa-phone" />
           </button>
@@ -2027,6 +2585,20 @@ onUnmounted(() => {
         </button>
       </div>
     </div>
+
+    <ChatGroupCallStage
+      v-if="isGroupCalling"
+      :session="groupCallSession"
+      :state="groupCallState"
+      :tiles="groupCallTiles"
+      :duration-label="groupCallDurationLabel"
+      :mic-enabled="groupCallMicEnabled"
+      :camera-enabled="groupCallCameraEnabled"
+      @toggle-mic="toggleGroupCallMic"
+      @toggle-camera="toggleGroupCallCamera"
+      @leave="leaveGroupCall"
+      @end="leaveGroupCall"
+    />
 
     <div class="flex h-full min-h-0 w-full flex-1 flex-col">
       <div
@@ -2149,7 +2721,7 @@ onUnmounted(() => {
                       type="button"
                       class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-[#1877f2]"
                       aria-label="Audio call"
-                      :disabled="isCalling || !messagingAllowed || active.isGroup"
+                      :disabled="isCalling || isGroupCalling || !messagingAllowed"
                       @click="startAudioCall"
                     >
                       <i class="fa-solid fa-phone text-[15px]" />
@@ -2158,7 +2730,7 @@ onUnmounted(() => {
                       type="button"
                       class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-[#1877f2]"
                       aria-label="Video call"
-                      :disabled="isCalling || !messagingAllowed || active.isGroup"
+                      :disabled="isCalling || isGroupCalling || !messagingAllowed"
                       @click="startVideoCall"
                     >
                       <i class="fa-solid fa-video text-[15px]" />
@@ -2212,9 +2784,11 @@ onUnmounted(() => {
                 :sticker-pack-active="stickerPackActive"
                 :sticker-rows="stickerRows"
                 :pending-chat-image="pendingChatImage"
+                :pending-chat-file="pendingChatFile"
                 :reply-to="replyTo"
                 :messaging-allowed="messagingAllowed"
                 :send-pending="sendPending"
+                :is-group="active.isGroup"
                 @submit="sendMessage"
                 @composer-input="onComposerInput"
                 @composer-blur="stopTypingNow"
@@ -2224,8 +2798,13 @@ onUnmounted(() => {
                 @send-sticker="sendStickerMessage"
                 @sticker-image-error="onStickerImageError"
                 @clear-pending-image="clearPendingChatImage"
+                @clear-pending-file="clearPendingChatFile"
                 @clear-reply="clearReplyToMessage"
                 @image-selected="onChatImageSelected"
+                @file-selected="onChatFileSelected"
+                @create-poll="openCreatePollModal"
+                @create-reminder="openCreateReminderModal"
+                @create-note="openCreateNoteModal"
               />
             </div>
           </template>
@@ -2333,6 +2912,181 @@ onUnmounted(() => {
         </li>
       </template>
     </ul>
+  </a-modal>
+  <a-modal
+    v-model:open="createPollOpen"
+    title="Tạo bình chọn"
+    ok-text="Tạo"
+    cancel-text="Hủy"
+    :confirm-loading="createPollSubmitting"
+    :width="460"
+    destroy-on-close
+    @ok="submitCreatePoll"
+  >
+    <label class="mb-1 block text-[13px] font-medium text-zinc-700">Chủ đề bình chọn</label>
+    <a-input
+      v-model:value="pollQuestion"
+      placeholder="Ví dụ: Tối nay ăn gì?"
+      max-length="240"
+      class="mb-3"
+    />
+    <div class="mb-2 flex items-center justify-between">
+      <span class="text-[13px] font-medium text-zinc-700">Lựa chọn</span>
+      <button
+        type="button"
+        class="text-[13px] font-semibold text-[#1877f2]"
+        @click="addPollOptionInput"
+      >
+        Thêm lựa chọn
+      </button>
+    </div>
+    <div class="space-y-2">
+      <div
+        v-for="(_, index) in pollOptions"
+        :key="index"
+        class="flex items-center gap-2"
+      >
+        <a-input
+          v-model:value="pollOptions[index]"
+          :placeholder="`Lựa chọn ${index + 1}`"
+          max-length="240"
+        />
+        <button
+          type="button"
+          class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+          :disabled="pollOptions.length <= 2"
+          aria-label="Xóa lựa chọn"
+          @click="removePollOptionInput(index)"
+        >
+          <i class="fa-solid fa-xmark text-[12px]" />
+        </button>
+      </div>
+    </div>
+    <label class="mb-1 mt-4 block text-[13px] font-medium text-zinc-700">Deadline</label>
+    <input
+      v-model="pollDeadline"
+      type="datetime-local"
+      class="h-9 w-full rounded-md border border-zinc-300 px-3 text-[14px] outline-none transition focus:border-[#1877f2] focus:ring-2 focus:ring-[#1877f2]/15"
+    >
+    <label class="mt-3 flex items-center gap-2 text-[13px] text-zinc-700">
+      <input v-model="pollAllowMultiple" type="checkbox" class="h-4 w-4 rounded border-zinc-300">
+      Cho chọn nhiều đáp án
+    </label>
+    <label class="mt-2 flex items-center gap-2 text-[13px] text-zinc-700">
+      <input v-model="pollAllowAddOptions" type="checkbox" class="h-4 w-4 rounded border-zinc-300">
+      Thành viên được thêm lựa chọn
+    </label>
+  </a-modal>
+  <a-modal
+    v-model:open="createReminderOpen"
+    title="Tạo nhắc hẹn"
+    ok-text="Tạo"
+    cancel-text="Hủy"
+    :confirm-loading="createReminderSubmitting"
+    :width="460"
+    destroy-on-close
+    @ok="submitCreateReminder"
+  >
+    <label class="mb-1 block text-[13px] font-medium text-zinc-700">Tiêu đề</label>
+    <a-input
+      v-model:value="reminderTitle"
+      placeholder="Ví dụ: Họp nhóm"
+      max-length="180"
+      class="mb-3"
+    />
+    <label class="mb-1 block text-[13px] font-medium text-zinc-700">Mô tả</label>
+    <a-textarea
+      v-model:value="reminderDescription"
+      :rows="3"
+      placeholder="Nội dung nhắc hẹn"
+      max-length="2000"
+      class="mb-3"
+    />
+    <label class="mb-1 block text-[13px] font-medium text-zinc-700">Thời gian nhắc</label>
+    <input
+      v-model="reminderAt"
+      type="datetime-local"
+      class="mb-3 h-9 w-full rounded-md border border-zinc-300 px-3 text-[14px] outline-none transition focus:border-[#1877f2] focus:ring-2 focus:ring-[#1877f2]/15"
+    >
+    <div class="mb-2 text-[13px] font-medium text-zinc-700">
+      Người được nhắc
+    </div>
+    <div class="mb-3 flex gap-2">
+      <button
+        type="button"
+        class="rounded-full px-3 py-1.5 text-[13px] font-semibold transition"
+        :class="reminderTarget === 'all' ? 'bg-[#1877f2] text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'"
+        @click="reminderTarget = 'all'"
+      >
+        Tất cả
+      </button>
+      <button
+        type="button"
+        class="rounded-full px-3 py-1.5 text-[13px] font-semibold transition"
+        :class="reminderTarget === 'members' ? 'bg-[#1877f2] text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'"
+        @click="reminderTarget = 'members'"
+      >
+        Chọn thành viên
+      </button>
+    </div>
+    <div
+      v-if="reminderTarget === 'members'"
+      class="max-h-44 overflow-y-auto rounded-lg border border-zinc-200 divide-y divide-zinc-100"
+    >
+      <label
+        v-for="row in reminderMemberRows"
+        :key="row.id"
+        class="flex cursor-pointer items-center gap-3 px-3 py-2"
+      >
+        <input
+          type="checkbox"
+          class="h-4 w-4 rounded border-zinc-300"
+          :checked="reminderTargetUserIds.includes(row.id)"
+          @change="toggleReminderTargetUser(row.id)"
+        >
+        <img
+          v-if="row.avatarUrl"
+          :src="row.avatarUrl"
+          alt=""
+          class="h-7 w-7 rounded-full object-cover"
+        >
+        <span
+          v-else
+          class="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white"
+          :class="fallbackClass(row.id)"
+        >{{ initials(row.name) }}</span>
+        <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">{{ row.name }}</span>
+      </label>
+    </div>
+  </a-modal>
+  <a-modal
+    v-model:open="createNoteOpen"
+    title="Tạo ghi chú nhóm"
+    ok-text="Tạo"
+    cancel-text="Hủy"
+    :confirm-loading="createNoteSubmitting"
+    :width="460"
+    destroy-on-close
+    @ok="submitCreateNote"
+  >
+    <label class="mb-1 block text-[13px] font-medium text-zinc-700">Tiêu đề</label>
+    <a-input
+      v-model:value="noteTitle"
+      placeholder="Tiêu đề ghi chú"
+      max-length="180"
+      class="mb-3"
+    />
+    <label class="mb-1 block text-[13px] font-medium text-zinc-700">Nội dung</label>
+    <a-textarea
+      v-model:value="noteContent"
+      :rows="5"
+      placeholder="Nội dung ghi chú"
+      max-length="10000"
+    />
+    <label class="mt-3 flex items-center gap-2 text-[13px] text-zinc-700">
+      <input v-model="notePinned" type="checkbox" class="h-4 w-4 rounded border-zinc-300">
+      Ghim ghi chú
+    </label>
   </a-modal>
   <ChatGroupDetailsDrawer
     v-if="active?.isGroup"

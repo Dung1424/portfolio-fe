@@ -10,10 +10,12 @@ const props = defineProps({
   stickerPackActive: { type: String, default: 'sticker1' },
   stickerRows: { type: Array, default: () => [] },
   pendingChatImage: { type: Object, default: null },
+  pendingChatFile: { type: Object, default: null },
   replyTo: { type: Object, default: null },
   draft: { type: String, default: '' },
   messagingAllowed: { type: Boolean, default: true },
   sendPending: { type: Boolean, default: false },
+  isGroup: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
@@ -27,8 +29,13 @@ const emit = defineEmits([
   'send-sticker',
   'sticker-image-error',
   'clear-pending-image',
+  'clear-pending-file',
   'clear-reply',
   'image-selected',
+  'file-selected',
+  'create-poll',
+  'create-reminder',
+  'create-note',
 ])
 
 const draftModel = computed({
@@ -38,12 +45,20 @@ const draftModel = computed({
 
 /** Giữ ref trong cùng component — truyền ref qua prop từ cha bị Vue unwrap nên `.click()` từ composable không còn element. */
 const chatImageFileInput = ref(null)
+const chatFileInput = ref(null)
 
 function openChatImagePicker() {
   if (!props.messagingAllowed) {
     return
   }
   chatImageFileInput.value?.click()
+}
+
+function openChatFilePicker() {
+  if (!props.messagingAllowed) {
+    return
+  }
+  chatFileInput.value?.click()
 }
 </script>
 
@@ -76,7 +91,84 @@ function openChatImagePicker() {
       accept="image/jpeg,image/png,image/gif,image/webp"
       @change="emit('image-selected', $event)"
     >
+    <input
+      ref="chatFileInput"
+      type="file"
+      class="fixed left-0 top-0 h-px w-px opacity-0"
+      tabindex="-1"
+      aria-hidden="true"
+      accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.mp4,.mov,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,video/mp4,video/quicktime"
+      @change="emit('file-selected', $event)"
+    >
     <form @submit.prevent="emit('submit')">
+      <div
+        v-if="isGroup && messagingAllowed"
+        class="-mx-1 mb-2 flex items-center gap-1 overflow-x-auto border-y border-zinc-100 bg-zinc-50/90 px-1 py-1.5"
+        aria-label="Công cụ nhóm"
+      >
+        <button
+          type="button"
+          class="group-tool-btn"
+          title="Sticker"
+          aria-label="Sticker"
+          @click="emit('toggle-sticker-picker')"
+        >
+          <i class="fa-regular fa-face-smile" />
+        </button>
+        <button
+          type="button"
+          class="group-tool-btn"
+          title="Ảnh"
+          aria-label="Ảnh"
+          @click="openChatImagePicker"
+        >
+          <i class="fa-regular fa-image" />
+        </button>
+        <button
+          type="button"
+          class="group-tool-btn"
+          title="Đính kèm"
+          aria-label="Đính kèm"
+          @click="openChatFilePicker"
+        >
+          <i class="fa-solid fa-paperclip" />
+        </button>
+        <button
+          type="button"
+          class="group-tool-btn"
+          title="Bình chọn"
+          aria-label="Bình chọn"
+          @click="emit('create-poll')"
+        >
+          <i class="fa-solid fa-list-check" />
+        </button>
+        <button
+          type="button"
+          class="group-tool-btn"
+          title="Nhắc hẹn"
+          aria-label="Nhắc hẹn"
+          @click="emit('create-reminder')"
+        >
+          <i class="fa-regular fa-bell" />
+        </button>
+        <button
+          type="button"
+          class="group-tool-btn"
+          title="Ghi chú"
+          aria-label="Ghi chú"
+          @click="emit('create-note')"
+        >
+          <i class="fa-regular fa-note-sticky" />
+        </button>
+        <button
+          type="button"
+          class="group-tool-btn"
+          title="Thêm"
+          aria-label="Thêm"
+        >
+          <i class="fa-solid fa-ellipsis" />
+        </button>
+      </div>
       <div
         v-if="stickerPickerOpen"
         class="mb-2 overflow-hidden rounded-2xl border border-zinc-200/90 bg-white shadow-sm"
@@ -139,6 +231,29 @@ function openChatImagePicker() {
         </button>
       </div>
       <div
+        v-if="pendingChatFile"
+        class="mb-2 flex items-center gap-2 rounded-xl border border-zinc-200/90 bg-zinc-50 p-2"
+      >
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-zinc-600 ring-1 ring-zinc-200">
+          <i :class="pendingChatFile.fileCategory === 'video' ? 'fa-solid fa-file-video' : 'fa-regular fa-file-lines'" />
+        </span>
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-[13px] font-semibold text-zinc-800">
+            {{ pendingChatFile.originalName || 'File' }}
+          </p>
+          <p class="text-[12px] text-zinc-500">
+            Sẽ kiểm tra an toàn trước khi cho tải xuống
+          </p>
+        </div>
+        <button
+          type="button"
+          class="rounded-full px-2 py-1 text-[12px] text-zinc-500 hover:bg-zinc-200/80"
+          @click="emit('clear-pending-file')"
+        >
+          Remove
+        </button>
+      </div>
+      <div
         v-if="replyTo"
         class="mb-2 flex items-start gap-2 rounded-xl border border-zinc-200/90 bg-zinc-50 p-2"
       >
@@ -162,6 +277,7 @@ function openChatImagePicker() {
         class="composer-bar flex min-h-[48px] items-center gap-1.5 rounded-full border border-zinc-200/90 bg-[#f0f2f5] py-1.5 pl-2.5 pr-2 transition focus-within:border-[#1877f2]/35 focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(24,119,242,0.12)]"
       >
         <button
+          v-if="!isGroup"
           type="button"
           class="composer-icon-btn flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/80 hover:text-[#1877f2]"
           aria-label="Attach photo"
@@ -171,6 +287,17 @@ function openChatImagePicker() {
           <i class="fa-solid fa-plus text-[18px] leading-none" />
         </button>
         <button
+          v-if="!isGroup"
+          type="button"
+          class="composer-icon-btn flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/80 hover:text-[#1877f2]"
+          aria-label="Attach file"
+          :disabled="!messagingAllowed"
+          @click="openChatFilePicker"
+        >
+          <i class="fa-solid fa-paperclip text-[16px] leading-none" />
+        </button>
+        <button
+          v-if="!isGroup"
           type="button"
           class="composer-icon-btn flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/80 hover:text-[#1877f2]"
           aria-label="Open sticker picker"
@@ -193,7 +320,7 @@ function openChatImagePicker() {
         <button
           type="submit"
           class="composer-send flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-[14px] text-white shadow-sm transition hover:bg-[#166fe5] active:scale-[0.96] disabled:cursor-not-allowed disabled:bg-[#e4e6eb] disabled:text-[#bcc0c4] disabled:shadow-none"
-          :disabled="!messagingAllowed || ((!draft.trim() && !pendingChatImage) || sendPending)"
+          :disabled="!messagingAllowed || ((!draft.trim() && !pendingChatImage && !pendingChatFile) || sendPending)"
           aria-label="Send"
         >
           <i class="fa-solid fa-arrow-up leading-none" />
@@ -202,3 +329,26 @@ function openChatImagePicker() {
     </form>
   </div>
 </template>
+
+<style scoped>
+.group-tool-btn {
+  display: inline-flex;
+  height: 34px;
+  width: 38px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: #52525b;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.group-tool-btn:hover {
+  background-color: #e4e6eb;
+  color: #1877f2;
+}
+
+.group-tool-btn:active {
+  transform: scale(0.96);
+}
+</style>

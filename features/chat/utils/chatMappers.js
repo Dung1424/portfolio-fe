@@ -22,7 +22,7 @@ export function normalizeLastPreviewObject(p) {
   return {
     text: p.text ?? '',
     senderUserId: p.senderUserId != null ? String(p.senderUserId) : null,
-    messageType: typeof p.messageType === 'string' ? p.messageType : null,
+    messageType: typeof p.messageType === 'string' ? p.messageType : null
   }
 }
 
@@ -81,7 +81,7 @@ export function mapApiConversationToUi(apiConv, myUserIdVal) {
     messagesNextCursor: null,
     participantReceipts: normalizeParticipantReceipts(apiConv.participantReceipts),
     pinnedMessages: Array.isArray(apiConv.pinnedMessages) ? apiConv.pinnedMessages : [],
-    participants: Array.isArray(apiConv.participants) ? apiConv.participants : [],
+    participants: Array.isArray(apiConv.participants) ? apiConv.participants : []
   }
 }
 
@@ -100,8 +100,24 @@ export function mapApiMessageToUi(raw, myId) {
       ? new Date(raw.updatedAt)
       : new Date()
   let imageUrl = ''
+  const fileAttachments = []
   if (Array.isArray(raw?.attachments)) {
     for (const a of raw.attachments) {
+      if (a?.kind === 'file') {
+        fileAttachments.push({
+          objectKey: typeof a.objectKey === 'string' ? a.objectKey : '',
+          url: typeof a.url === 'string' ? a.url : '',
+          originalName: typeof a.originalName === 'string' ? a.originalName : 'File',
+          contentType: typeof a.contentType === 'string' ? a.contentType : '',
+          extension: typeof a.extension === 'string' ? a.extension : '',
+          size: Number.isFinite(Number(a.size)) ? Number(a.size) : 0,
+          fileCategory: typeof a.fileCategory === 'string' ? a.fileCategory : 'document',
+          status: typeof a.status === 'string' ? a.status : 'pending_scan',
+          scan: a.scan && typeof a.scan === 'object' ? a.scan : null,
+          media: a.media && typeof a.media === 'object' ? a.media : null
+        })
+        continue
+      }
       const u = typeof a.url === 'string' ? a.url.trim() : ''
       if (u && (a.kind === 'image' || a.objectKey)) {
         imageUrl = u
@@ -122,6 +138,8 @@ export function mapApiMessageToUi(raw, myId) {
   }
   if (imageUrl && (!text || text === '[Attachment]' || text === '[đính kèm]')) {
     text = ''
+  } else if (!text && fileAttachments.length > 0) {
+    text = ''
   } else if (!text && Array.isArray(raw?.attachments) && raw.attachments.length > 0 && !imageUrl) {
     text = '[Attachment]'
   }
@@ -136,6 +154,7 @@ export function mapApiMessageToUi(raw, myId) {
     type: msgType,
     text,
     imageUrl,
+    fileAttachments,
     isSticker,
     stickerUrl,
     me,
@@ -179,6 +198,9 @@ export function rowPreviewFromMessageUi(raw, ui) {
       && raw.attachments.some(
         a => a && (a.kind === 'image' || (typeof a.objectKey === 'string' && a.objectKey))
       ))
+  if (Array.isArray(ui?.fileAttachments) && ui.fileAttachments.length) {
+    return '[file]'
+  }
   return hasImg ? '[đính kèm]' : ''
 }
 
@@ -197,7 +219,7 @@ export function bumpConversationRowFromMessage(conv, raw, ui) {
   conv.lastMessagePreview = {
     text: preview,
     senderUserId: raw?.senderUserId != null ? String(raw.senderUserId) : null,
-    messageType,
+    messageType
   }
 }
 

@@ -217,6 +217,30 @@ export function getUrlList() {
     /** POST body `{ userId }` — admin xóa thành viên */
     chatConversationGroupRemoveMember: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/group/members/remove`,
+    chatConversationGroupCallStart: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group-call`,
+    chatConversationGroupCallActive: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group-call/active`,
+    chatConversationGroupCallJoin: (conversationId, callId) =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group-call/${enc(String(callId))}/join`,
+    chatConversationGroupCallLeave: (conversationId, callId) =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group-call/${enc(String(callId))}/leave`,
+    chatConversationGroupCallEnd: (conversationId, callId) =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group-call/${enc(String(callId))}/end`,
+    chatGroupPolls: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group-tools/polls`,
+    chatGroupPollVote: (conversationId, pollId) =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group-tools/polls/${enc(String(pollId))}/vote`,
+    chatGroupPollOption: (conversationId, pollId) =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group-tools/polls/${enc(String(pollId))}/options`,
+    chatGroupReminders: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group-tools/reminders`,
+    chatGroupReminderCancel: (conversationId, reminderId) =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group-tools/reminders/${enc(String(reminderId))}/cancel`,
+    chatGroupNotes: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group-tools/notes`,
+    chatGroupNote: (conversationId, noteId) =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/group-tools/notes/${enc(String(noteId))}`,
     /** GET — Laravel block/khóa (1-1), Node proxy */
     chatMessagingEligibility: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/messaging-eligibility`,
@@ -239,6 +263,8 @@ export function getUrlList() {
     chatPresenceQuery: `${chatApi}/presence/query`,
     chatUploadPresign: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/uploads/presign`,
+    chatFileUploadPresign: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/uploads/file/presign`,
 
     /** Base URL `.../api/admin` — alias của `getAdminPaths().root` */
     adminBase: adminPaths.root,

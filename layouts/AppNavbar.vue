@@ -6,6 +6,8 @@ import { useUserStore } from '~/stores/userStore'
 import { useNotificationStore } from '~/stores/notificationStore'
 import { chatApi, unwrapChatData } from '~/features/chat/services/chat.api.js'
 import { profileService } from '~/features/profile/services/profile.api.js'
+import { useLiveKitGroupCall } from '~/features/chat/composables/useLiveKitGroupCall.js'
+import ChatGroupCallStage from '~/features/chat/components/ChatGroupCallStage.vue'
 import {
   connectChatSocket,
   disconnectChatSocket,
@@ -118,6 +120,47 @@ const conversationMetaCache = new Map<string, ChatConversationMeta>()
 const chatToasts = ref<ChatToastItem[]>([])
 const chatToastTimers = new Map<string, ReturnType<typeof setTimeout>>()
 let removeGlobalChatAudioUnlockListeners: (() => void) | null = null
+const globalGroupCallActive = ref(null)
+const globalMyUserId = computed(() => {
+  const id = (user.value as { id?: string | number } | null)?.id
+  return id != null ? String(id) : null
+})
+const globalGroupCall = useLiveKitGroupCall(globalGroupCallActive, globalMyUserId, getSenderProfile)
+const globalIncomingGroupCallMeta = ref<ChatConversationMeta | null>(null)
+const {
+  groupCallSession: globalGroupCallSession,
+  incomingGroupCall: globalIncomingGroupCall,
+  groupCallState: globalGroupCallState,
+  groupCallTiles: globalGroupCallTiles,
+  groupCallDurationSeconds: globalGroupCallDurationSeconds,
+  groupCallMicEnabled: globalGroupCallMicEnabled,
+  groupCallCameraEnabled: globalGroupCallCameraEnabled,
+  isGroupCalling: isGlobalGroupCalling,
+  showIncomingGroupCall: showGlobalIncomingGroupCall,
+  joinGroupCall: joinGlobalGroupCall,
+  leaveGroupCall: leaveGlobalGroupCall,
+  dismissIncomingGroupCall: dismissGlobalIncomingGroupCall,
+  toggleGroupCallMic: toggleGlobalGroupCallMic,
+  toggleGroupCallCamera: toggleGlobalGroupCallCamera
+} = globalGroupCall
+
+const globalGroupCallDurationLabel = computed(() => {
+  const total = Math.max(0, Number(globalGroupCallDurationSeconds.value) || 0)
+  const min = Math.floor(total / 60)
+  const sec = total % 60
+  return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+})
+
+const globalIncomingGroupCallTitle = computed(() => {
+  const cid = globalIncomingGroupCall.value?.conversationId
+  if (!cid) {
+    return 'Nhóm chat'
+  }
+  if (globalIncomingGroupCallMeta.value) {
+    return globalIncomingGroupCallMeta.value.name
+  }
+  return conversationMetaCache.get(String(cid))?.name || 'Nhóm chat'
+})
 
 async function refreshChatUnreadBadge() {
   if (!import.meta.client || !authStore.isLoggedIn) {
@@ -354,6 +397,20 @@ function onGlobalMessageNew(payload: ChatSocketPayload) {
   }
 }
 
+async function onGlobalGroupCallStarted(payload: ChatConversationSocketPayload & { session?: { conversationId?: string | null, callType?: string | null } | null }) {
+  const conversationId = payload?.session?.conversationId
+    ?? payload?.conversationId
+    ?? ''
+  if (!conversationId || isViewingChatPage()) {
+    return
+  }
+  const meta = await getConversationToastMeta(String(conversationId))
+  if (meta) {
+    globalIncomingGroupCallMeta.value = meta
+  }
+  playChatNotificationSound(chatNotifyAudioRef.value)
+}
+
 function setSearchScope(scope: 'photos' | 'galleries' | 'photographers') {
   searchScope.value = scope
   searchScopeOpen.value = false
@@ -410,6 +467,7 @@ onMounted(async () => {
     socket?.on('conversation:read', onChatUnreadSocketEvent)
     socket?.on('conversation:added', onChatConversationMetaChanged)
     socket?.on('group:updated', onChatConversationMetaChanged)
+    socket?.on('group-call:started', onGlobalGroupCallStarted)
   }
   document.addEventListener('click', onDocumentClick)
 })
@@ -424,6 +482,7 @@ onUnmounted(() => {
   socket?.off('conversation:read', onChatUnreadSocketEvent)
   socket?.off('conversation:added', onChatConversationMetaChanged)
   socket?.off('group:updated', onChatConversationMetaChanged)
+  socket?.off('group-call:started', onGlobalGroupCallStarted)
   stopPresenceHeartbeat()
   disconnectChatSocket()
   document.removeEventListener('click', onDocumentClick)
@@ -511,6 +570,7 @@ watch(isLoggedIn, async (loggedIn) => {
   socket?.off('conversation:read', onChatUnreadSocketEvent)
   socket?.off('conversation:added', onChatConversationMetaChanged)
   socket?.off('group:updated', onChatConversationMetaChanged)
+  socket?.off('group-call:started', onGlobalGroupCallStarted)
   stopPresenceHeartbeat()
 
   if (!loggedIn) {
@@ -527,6 +587,7 @@ watch(isLoggedIn, async (loggedIn) => {
   nextSocket?.on('conversation:read', onChatUnreadSocketEvent)
   nextSocket?.on('conversation:added', onChatConversationMetaChanged)
   nextSocket?.on('group:updated', onChatConversationMetaChanged)
+  nextSocket?.on('group-call:started', onGlobalGroupCallStarted)
 })
 </script>
 
@@ -535,6 +596,60 @@ watch(isLoggedIn, async (loggedIn) => {
     ref="navRef"
     class="fixed top-0 z-[1000] w-full border-b border-zinc-200 bg-white"
   >
+    <div
+      v-if="!isViewingChatPage() && showGlobalIncomingGroupCall && globalIncomingGroupCall"
+      class="fixed inset-0 z-[1300] flex items-center justify-center bg-zinc-950/70 px-4 backdrop-blur-sm"
+    >
+      <div class="w-full max-w-md rounded-[28px] border border-white/15 bg-gradient-to-b from-zinc-900 to-zinc-950 p-6 text-white shadow-2xl">
+        <p class="text-center text-[13px] uppercase tracking-[0.18em] text-zinc-400">
+          Cuộc gọi {{ globalIncomingGroupCall.callType === 'audio' ? 'thoại' : 'video' }} nhóm
+        </p>
+        <div class="mt-5 flex flex-col items-center text-center">
+          <div class="flex h-24 w-24 items-center justify-center rounded-full bg-white/10 text-[30px]">
+            <i :class="globalIncomingGroupCall.callType === 'audio' ? 'fa-solid fa-phone' : 'fa-solid fa-video'" />
+          </div>
+          <p class="mt-4 text-[24px] font-semibold leading-tight">
+            {{ globalIncomingGroupCallTitle }}
+          </p>
+          <p class="mt-1 text-[13px] text-zinc-400">
+            Một thành viên đang bắt đầu cuộc gọi nhóm.
+          </p>
+        </div>
+        <div class="mt-8 flex items-center justify-center gap-8">
+          <button
+            type="button"
+            class="inline-flex h-16 w-16 items-center justify-center rounded-full bg-rose-500 text-xl text-white shadow-lg transition hover:scale-105 hover:bg-rose-600"
+            aria-label="Bỏ qua cuộc gọi nhóm"
+            @click="dismissGlobalIncomingGroupCall"
+          >
+            <i class="fa-solid fa-phone-slash" />
+          </button>
+          <button
+            type="button"
+            class="inline-flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 text-xl text-white shadow-lg transition hover:scale-105 hover:bg-emerald-600"
+            aria-label="Tham gia cuộc gọi nhóm"
+            @click="joinGlobalGroupCall(globalIncomingGroupCall)"
+          >
+            <i class="fa-solid fa-phone" />
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <ChatGroupCallStage
+      v-if="!isViewingChatPage() && isGlobalGroupCalling"
+      :session="globalGroupCallSession"
+      :state="globalGroupCallState"
+      :tiles="globalGroupCallTiles"
+      :duration-label="globalGroupCallDurationLabel"
+      :mic-enabled="globalGroupCallMicEnabled"
+      :camera-enabled="globalGroupCallCameraEnabled"
+      @toggle-mic="toggleGlobalGroupCallMic"
+      @toggle-camera="toggleGlobalGroupCallCamera"
+      @leave="leaveGlobalGroupCall"
+      @end="leaveGlobalGroupCall"
+    />
+
     <div class="pointer-events-none fixed right-4 top-16 z-[1200] flex w-[min(calc(100vw-2rem),360px)] flex-col gap-3">
       <div
         v-for="toast in chatToasts"
