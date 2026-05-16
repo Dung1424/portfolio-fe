@@ -27,6 +27,10 @@ const notificationStore = useNotificationStore()
 const { isLoggedIn } = storeToRefs(authStore)
 const { user } = storeToRefs(userStore)
 const { notifications: notificationsRef, unreadCount, currentPage, lastPage } = storeToRefs(notificationStore)
+const chatAccountSettings = ref({
+  notificationSoundEnabled: true,
+  messagePreviewEnabled: true
+})
 
 /** Matches formatted items from notificationStore.fetchNotifications */
 type NavbarNotification = {
@@ -75,6 +79,7 @@ type ChatConversationMeta = {
   isGroup: boolean
   name: string
   avatarUrl: string
+  notificationMuted: boolean
 }
 
 type ChatToastItem = {
@@ -193,7 +198,13 @@ function onChatConversationMetaChanged(payload: ChatConversationSocketPayload) {
 }
 
 function isViewingChatPage() {
-  return route.name === 'Chat'
+  if (route.name !== 'Chat') {
+    return false
+  }
+  if (!import.meta.client || typeof document === 'undefined') {
+    return true
+  }
+  return document.visibilityState === 'visible'
 }
 
 async function tryUnlockGlobalChatAudio() {
@@ -292,10 +303,6 @@ async function getConversationToastMeta(conversationId: string): Promise<ChatCon
   if (!conversationId) {
     return null
   }
-  const cached = conversationMetaCache.get(conversationId)
-  if (cached) {
-    return cached
-  }
   try {
     const res = await chatApi.getConversation(conversationId)
     const data = unwrapChatData(res)
@@ -311,13 +318,38 @@ async function getConversationToastMeta(conversationId: string): Promise<ChatCon
         : 'Direct message',
       avatarUrl: isGroup
         ? resolveMediaUrl(raw.groupAvatarUrl || '')
-        : ''
+        : '',
+      notificationMuted: Boolean(raw.notification?.muted)
     }
     conversationMetaCache.set(conversationId, meta)
     return meta
   } catch (error) {
     console.error('getConversationToastMeta', error)
     return null
+  }
+}
+
+async function refreshChatAccountSettings() {
+  try {
+    const cached = import.meta.client ? localStorage.getItem('chatAccountSettings') : ''
+    if (cached) {
+      chatAccountSettings.value = {
+        ...chatAccountSettings.value,
+        ...JSON.parse(cached)
+      }
+    }
+    const res = await chatApi.getPresenceSettings()
+    const data = unwrapChatData(res)
+    const setting = data?.setting
+    chatAccountSettings.value = {
+      notificationSoundEnabled: setting?.notificationSoundEnabled !== false,
+      messagePreviewEnabled: setting?.messagePreviewEnabled !== false
+    }
+    if (import.meta.client) {
+      localStorage.setItem('chatAccountSettings', JSON.stringify(chatAccountSettings.value))
+    }
+  } catch (error) {
+    console.error('refreshChatAccountSettings', error)
   }
 }
 
@@ -352,9 +384,14 @@ async function openIncomingMessageToast(payload: ChatSocketPayload) {
   const conversationId = payload?.conversationId != null ? String(payload.conversationId) : ''
   const senderUserId = payload?.message?.senderUserId != null ? String(payload.message.senderUserId) : ''
   const conversationMeta = await getConversationToastMeta(conversationId)
+  if (conversationMeta?.notificationMuted) {
+    return
+  }
   const sender = await getSenderProfile(senderUserId)
   const isGroup = conversationMeta?.isGroup === true
-  const baseMessageText = buildIncomingMessageDescription(payload)
+  const baseMessageText = chatAccountSettings.value.messagePreviewEnabled
+    ? buildIncomingMessageDescription(payload)
+    : 'Tin nhắn mới'
   const createdAt = payload?.message?.createdAt || payload?.message?.updatedAt
   const toastId = conversationId || `chat-${Date.now()}`
   const title = isGroup ? conversationMeta.name : sender.name
@@ -382,7 +419,8 @@ async function openIncomingMessageToast(payload: ChatSocketPayload) {
   scheduleChatToastDismiss(toastId)
 }
 
-function onGlobalMessageNew(payload: ChatSocketPayload) {
+async function onGlobalMessageNew(payload: ChatSocketPayload) {
+  await refreshChatAccountSettings()
   const senderUserId = payload?.message?.senderUserId != null ? String(payload.message.senderUserId) : ''
   const myUserId = (user.value as { id?: string | number } | null)?.id != null
     ? String((user.value as { id?: string | number }).id)
@@ -391,8 +429,13 @@ function onGlobalMessageNew(payload: ChatSocketPayload) {
     return
   }
   refreshChatUnreadBadge()
+  const conversationId = payload?.conversationId != null ? String(payload.conversationId) : ''
+  const meta = await getConversationToastMeta(conversationId)
+  if (meta?.notificationMuted) {
+    return
+  }
   void openIncomingMessageToast(payload)
-  if (!isViewingChatPage()) {
+  if (!isViewingChatPage() && chatAccountSettings.value.notificationSoundEnabled) {
     playChatNotificationSound(chatNotifyAudioRef.value)
   }
 }
@@ -458,7 +501,8 @@ onMounted(async () => {
     await userStore.fetchUserData()
     await Promise.all([
       notificationStore.fetchNotifications(1),
-      refreshChatUnreadBadge()
+      refreshChatUnreadBadge(),
+      refreshChatAccountSettings()
     ])
     connectChatSocket()
     startPresenceHeartbeat()

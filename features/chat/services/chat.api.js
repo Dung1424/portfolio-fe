@@ -222,6 +222,14 @@ export const chatApi = {
     return axios.get(getUrlList().chatConversation(conversationId), authConfig())
   },
 
+  patchConversationNotification(conversationId, body) {
+    return axios.patch(
+      getUrlList().chatConversationNotification(conversationId),
+      body,
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
   getMessagingEligibility(conversationId) {
     return axios.get(
       getUrlList().chatMessagingEligibility(conversationId),
@@ -328,6 +336,18 @@ export const chatApi = {
     return axios.post(
       getUrlList().chatPresenceQuery,
       { userIds: ids },
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  getPresenceSettings() {
+    return axios.get(getUrlList().chatPresenceSettings, authConfig())
+  },
+
+  patchPresenceSettings(body) {
+    return axios.patch(
+      getUrlList().chatPresenceSettings,
+      body,
       authConfig({ headers: { 'Content-Type': 'application/json' } })
     )
   }

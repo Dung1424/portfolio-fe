@@ -20,7 +20,15 @@ const props = defineProps({
   isAvatarBroken: { type: Function, required: true },
 })
 
-const emit = defineEmits(['update:query', 'set-folder', 'select', 'open-profile', 'avatar-error', 'new-group'])
+const emit = defineEmits([
+  'update:query',
+  'set-folder',
+  'select',
+  'open-profile',
+  'avatar-error',
+  'new-group',
+  'open-account-settings',
+])
 
 function previewSubtitleClass(c) {
   const t = c?.lastMessagePreview?.messageType
@@ -55,14 +63,15 @@ const queryModel = computed({
             <i class="fa-solid fa-user-group text-[11px]" />
             <span>Nhóm mới</span>
           </button>
-          <NuxtLink
-            to="/account"
+          <button
+            type="button"
             class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200/90 hover:text-zinc-900"
-            aria-label="Account"
-            title="Account"
+            aria-label="Cài đặt tài khoản"
+            title="Cài đặt tài khoản"
+            @click="emit('open-account-settings')"
           >
             <i class="fa-regular fa-user text-[13px]" />
-          </NuxtLink>
+          </button>
         </div>
       </div>
       <div class="mt-3 grid grid-cols-2 rounded-xl bg-zinc-100 p-0.5">
@@ -171,7 +180,14 @@ const queryModel = computed({
             </div>
             <div class="min-w-0 flex-1 py-0.5">
               <div class="flex items-baseline justify-between gap-2">
-                <span class="truncate text-[15px] font-semibold text-zinc-900">{{ c.name }}</span>
+                <span class="flex min-w-0 items-center gap-1.5">
+                  <span class="truncate text-[15px] font-semibold text-zinc-900">{{ c.name }}</span>
+                  <i
+                    v-if="c.notificationMuted"
+                    class="fa-solid fa-bell-slash shrink-0 text-[11px] text-zinc-400"
+                    title="Đã tắt thông báo"
+                  />
+                </span>
                 <time class="shrink-0 text-[11px] tabular-nums text-zinc-400">{{ timeLabel(c.updatedAt) }}</time>
               </div>
               <p

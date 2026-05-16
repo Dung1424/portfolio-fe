@@ -8,8 +8,9 @@ import {
 /**
  * @param {import('vue').Ref<string | null>} selectedId
  * @param {import('vue').Ref<boolean>} mobileShowThread
+ * @param {{ notificationSoundEnabled?: import('vue').Ref<boolean> }} [settings]
  */
-export function useChatMessageNotify(selectedId, mobileShowThread) {
+export function useChatMessageNotify(selectedId, mobileShowThread, settings = {}) {
   const notifyAudioRef = ref(null)
   const notifySoundSrc = computed(() => getChatNotifyPublicSrc())
 
@@ -35,6 +36,9 @@ export function useChatMessageNotify(selectedId, mobileShowThread) {
       return
     }
     if (isViewingConversationThread(conversationId)) {
+      return
+    }
+    if (settings.notificationSoundEnabled && unref(settings.notificationSoundEnabled) === false) {
       return
     }
     playChatNotificationSound(notifyAudioRef.value)

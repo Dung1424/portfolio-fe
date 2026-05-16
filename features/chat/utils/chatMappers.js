@@ -72,9 +72,16 @@ export function mapApiConversationToUi(apiConv, myUserIdVal) {
     lastMessage: last,
     lastMessageId: apiConv.lastMessageId != null ? String(apiConv.lastMessageId) : null,
     lastMessagePreview: normalizeLastPreviewObject(apiConv.lastMessagePreview),
+    notification: apiConv.notification && typeof apiConv.notification === 'object'
+      ? apiConv.notification
+      : { muted: false, mutedForever: false, mutedUntil: null },
+    notificationMuted: Boolean(apiConv.notification?.muted),
+    notificationMutedUntil: apiConv.notification?.mutedUntil ?? null,
+    notificationMutedForever: Boolean(apiConv.notification?.mutedForever),
     updatedAt: t ? new Date(t) : new Date(),
     unreadCount: typeof apiConv.unreadCount === 'number' ? apiConv.unreadCount : 0,
     online: false,
+    presenceHidden: false,
     peerLastSeenAt: null,
     messages: [],
     messagesLoaded: false,

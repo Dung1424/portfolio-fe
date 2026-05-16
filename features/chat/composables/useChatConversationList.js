@@ -36,7 +36,7 @@ export function useChatConversationList(selectedId, mobileShowThread) {
     try {
       const token = import.meta.client ? localStorage.getItem('token') : null
       const res = await profileService.fetchByUserId(peerUserId, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
       })
       const raw = res?.data?.data ?? res?.data
       const user = raw?.user ?? raw
@@ -44,8 +44,7 @@ export function useChatConversationList(selectedId, mobileShowThread) {
         peerProfileCache.set(peerUserId, user)
         return user
       }
-    }
-    catch (e) {
+    } catch (e) {
       console.error('fetchPeerProfile', e)
     }
     return null
@@ -65,8 +64,8 @@ export function useChatConversationList(selectedId, mobileShowThread) {
   async function enrichAllConversationPeers(list) {
     const ids = [
       ...new Set(
-        list.filter(c => !c.isGroup).map(c => c.peerUserId).filter(Boolean),
-      ),
+        list.filter(c => !c.isGroup).map(c => c.peerUserId).filter(Boolean)
+      )
     ]
     await Promise.all(
       ids.map(async (pid) => {
@@ -79,15 +78,15 @@ export function useChatConversationList(selectedId, mobileShowThread) {
             applyPeerUserToConversation(c, user)
           }
         }
-      }),
+      })
     )
   }
 
   async function applyPresenceToConversations(list) {
     const ids = [
       ...new Set(
-        list.filter(c => !c.isGroup).map(c => c.peerUserId).filter(Boolean),
-      ),
+        list.filter(c => !c.isGroup).map(c => c.peerUserId).filter(Boolean)
+      )
     ]
     if (!ids.length) {
       return
@@ -103,17 +102,18 @@ export function useChatConversationList(selectedId, mobileShowThread) {
         }
         const row = users[String(p)]
         if (row && typeof row.online === 'boolean') {
-          c.online = row.online
+          c.online = row.hidden ? false : row.online
+          c.presenceHidden = Boolean(row.hidden)
         }
-        if (row && row.lastSeenAt != null && Number.isFinite(Number(row.lastSeenAt))) {
+        if (row?.hidden) {
+          c.peerLastSeenAt = null
+        } else if (row && row.lastSeenAt != null && Number.isFinite(Number(row.lastSeenAt))) {
           c.peerLastSeenAt = Number(row.lastSeenAt)
-        }
-        else if (row?.online === true) {
+        } else if (row?.online === true) {
           c.peerLastSeenAt = null
         }
       }
-    }
-    catch (e) {
+    } catch (e) {
       console.error('presenceQuery', e)
     }
   }
@@ -124,17 +124,20 @@ export function useChatConversationList(selectedId, mobileShowThread) {
       return
     }
     const online = Boolean(payload?.online)
+    const hidden = Boolean(payload?.hidden)
     const ls = payload?.lastSeenAt
     for (const c of conversations.value) {
       if (c.isGroup) {
         continue
       }
       if (String(c.peerUserId) === uid) {
-        c.online = online
-        if (online) {
+        c.online = hidden ? false : online
+        c.presenceHidden = hidden
+        if (hidden) {
           c.peerLastSeenAt = null
-        }
-        else if (ls != null && Number.isFinite(Number(ls))) {
+        } else if (online) {
+          c.peerLastSeenAt = null
+        } else if (ls != null && Number.isFinite(Number(ls))) {
           c.peerLastSeenAt = Number(ls)
         }
       }
@@ -169,8 +172,7 @@ export function useChatConversationList(selectedId, mobileShowThread) {
       if (typeof pending === 'number') {
         pendingUnreadTotal.value = Math.max(0, pending)
       }
-    }
-    catch (e) {
+    } catch (e) {
       console.error('folderUnreadSummary', e)
     }
   }
@@ -201,20 +203,17 @@ export function useChatConversationList(selectedId, mobileShowThread) {
         selectedId.value = String(qCid)
         mobileShowThread.value = true
         await router.replace({ path: '/chat' })
-      }
-      else if (selectedId.value && !conversations.value.some(c => c.id === String(selectedId.value))) {
+      } else if (selectedId.value && !conversations.value.some(c => c.id === String(selectedId.value))) {
         selectedId.value = null
         mobileShowThread.value = false
       }
-    }
-    catch (e) {
+    } catch (e) {
       console.error('loadConversationList', e)
       notification.error({
         message: 'Messages',
-        description: e.response?.data?.message || 'Could not load conversations.',
+        description: e.response?.data?.message || 'Could not load conversations.'
       })
-    }
-    finally {
+    } finally {
       listLoading.value = false
       await refreshFolderUnreadTotals()
     }
@@ -248,8 +247,7 @@ export function useChatConversationList(selectedId, mobileShowThread) {
       await enrichAllConversationPeers([ui])
       await applyPresenceToConversations([ui])
       return ui
-    }
-    catch (e) {
+    } catch (e) {
       console.error('getConversation', e)
       return null
     }
@@ -284,7 +282,7 @@ export function useChatConversationList(selectedId, mobileShowThread) {
       messages: existing.messages,
       messagesLoaded: existing.messagesLoaded,
       messagesNextCursor: existing.messagesNextCursor,
-      pinnedMessages: existing.pinnedMessages,
+      pinnedMessages: existing.pinnedMessages
     }
     Object.assign(existing, incoming, preserve)
     scheduleRefreshFolderUnreadTotals()
@@ -306,6 +304,6 @@ export function useChatConversationList(selectedId, mobileShowThread) {
     refreshFolderUnreadTotals,
     scheduleRefreshFolderUnreadTotals,
     clearFolderUnreadDebounce,
-    mergeConversationFromRealtime,
+    mergeConversationFromRealtime
   }
 }

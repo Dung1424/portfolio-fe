@@ -203,6 +203,8 @@ export function getUrlList() {
     chatConversationCreate: `${chatApi}/conversations`,
     chatConversation: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}`,
+    chatConversationNotification: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/notification`,
     chatConversationGroupPatch: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/group`,
     chatConversationGroupLeave: conversationId =>
@@ -261,6 +263,7 @@ export function getUrlList() {
     chatConversationRead: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/read`,
     chatPresenceQuery: `${chatApi}/presence/query`,
+    chatPresenceSettings: `${chatApi}/presence/settings`,
     chatUploadPresign: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/uploads/presign`,
     chatFileUploadPresign: conversationId =>
