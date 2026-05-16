@@ -39,7 +39,7 @@ export const chatApi = {
         type: 'group',
         groupName: body.groupName,
         participantIds: body.participantIds,
-        groupAvatarObjectKey: body.groupAvatarObjectKey,
+        groupAvatarObjectKey: body.groupAvatarObjectKey
       },
       authConfig({ headers: { 'Content-Type': 'application/json' } })
     )
@@ -90,6 +90,113 @@ export const chatApi = {
     return axios.post(
       getUrlList().chatConversationGroupRemoveMember(conversationId),
       { userId: String(userId) },
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  startGroupCall(conversationId, callType = 'video') {
+    return axios.post(
+      getUrlList().chatConversationGroupCallStart(conversationId),
+      { callType: callType === 'audio' ? 'audio' : 'video' },
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  getActiveGroupCall(conversationId) {
+    return axios.get(
+      getUrlList().chatConversationGroupCallActive(conversationId),
+      authConfig()
+    )
+  },
+
+  joinGroupCall(conversationId, callId) {
+    return axios.post(
+      getUrlList().chatConversationGroupCallJoin(conversationId, callId),
+      {},
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  leaveGroupCall(conversationId, callId) {
+    return axios.post(
+      getUrlList().chatConversationGroupCallLeave(conversationId, callId),
+      {},
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  endGroupCall(conversationId, callId) {
+    return axios.post(
+      getUrlList().chatConversationGroupCallEnd(conversationId, callId),
+      {},
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  createGroupPoll(conversationId, body) {
+    return axios.post(
+      getUrlList().chatGroupPolls(conversationId),
+      body,
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  voteGroupPoll(conversationId, pollId, optionIds) {
+    const ids = Array.isArray(optionIds) ? optionIds.map(String) : [String(optionIds)]
+    return axios.post(
+      getUrlList().chatGroupPollVote(conversationId, pollId),
+      { optionIds: ids },
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  addGroupPollOption(conversationId, pollId, text) {
+    return axios.post(
+      getUrlList().chatGroupPollOption(conversationId, pollId),
+      { text: String(text || '') },
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  createGroupReminder(conversationId, body) {
+    return axios.post(
+      getUrlList().chatGroupReminders(conversationId),
+      body,
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  cancelGroupReminder(conversationId, reminderId) {
+    return axios.post(
+      getUrlList().chatGroupReminderCancel(conversationId, reminderId),
+      {},
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  listGroupNotes(conversationId) {
+    return axios.get(getUrlList().chatGroupNotes(conversationId), authConfig())
+  },
+
+  createGroupNote(conversationId, body) {
+    return axios.post(
+      getUrlList().chatGroupNotes(conversationId),
+      body,
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  updateGroupNote(conversationId, noteId, body) {
+    return axios.patch(
+      getUrlList().chatGroupNote(conversationId, noteId),
+      body,
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  deleteGroupNote(conversationId, noteId) {
+    return axios.delete(
+      getUrlList().chatGroupNote(conversationId, noteId),
       authConfig({ headers: { 'Content-Type': 'application/json' } })
     )
   },
@@ -201,6 +308,15 @@ export const chatApi = {
   presignChatImageUpload(conversationId, body) {
     return axios.post(
       getUrlList().chatUploadPresign(conversationId),
+      body,
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
+  /** Body `{ contentType, fileName, size }` — presigned PUT to MinIO */
+  presignChatFileUpload(conversationId, body) {
+    return axios.post(
+      getUrlList().chatFileUploadPresign(conversationId),
       body,
       authConfig({ headers: { 'Content-Type': 'application/json' } })
     )

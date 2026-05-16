@@ -13,7 +13,7 @@ import {
   mapApiMessageToUi,
   nextMessagesCursorFromData,
   normalizeLastPreviewObject,
-  sortMessagesByTimeAsc,
+  sortMessagesByTimeAsc
 } from '~/features/chat/utils/chatMappers.js'
 
 /**
@@ -38,6 +38,7 @@ export function useChatMessaging(
   const draft = ref('')
   const replyTo = ref(null)
   const pendingChatImage = ref(null)
+  const pendingChatFile = ref(null)
   const messagesScrollEl = ref(null)
   const highlightedMessageId = ref(null)
   let highlightedTimer = null
@@ -230,7 +231,7 @@ export function useChatMessaging(
           : ''
         if (cap && Array.isArray(c.messages) && c.messages.length) {
           c.messages = c.messages.filter(
-            m => m?.id != null && compareMongoObjectIdHex(String(m.id), cap) <= 0,
+            m => m?.id != null && compareMongoObjectIdHex(String(m.id), cap) <= 0
           )
         }
         /**
@@ -247,8 +248,7 @@ export function useChatMessaging(
           }
         }
       }
-    }
-    catch (e) {
+    } catch (e) {
       console.error('getConversation (pins)', e)
     }
   }
@@ -359,8 +359,8 @@ export function useChatMessaging(
           {
             userId: String(reader),
             lastReadMessageId: String(upTo),
-            lastDeliveredMessageId: String(upTo),
-          },
+            lastDeliveredMessageId: String(upTo)
+          }
         ])
       }
     }
@@ -462,7 +462,7 @@ export function useChatMessaging(
       conv.lastMessagePreview = {
         text: conv.lastMessage,
         senderUserId: raw?.senderUserId != null ? String(raw.senderUserId) : null,
-        messageType: 'text',
+        messageType: 'text'
       }
     }
     scheduleRefreshFolderUnreadTotals()
@@ -476,6 +476,10 @@ export function useChatMessaging(
     pendingChatImage.value = null
   }
 
+  function clearPendingChatFile() {
+    pendingChatFile.value = null
+  }
+
   function startReplyToMessage(msg) {
     if (!msg?.id) {
       replyTo.value = null
@@ -487,7 +491,7 @@ export function useChatMessaging(
       imageUrl: typeof msg.imageUrl === 'string' ? msg.imageUrl : '',
       me: Boolean(msg.me),
       at: msg.at ?? null,
-      senderUserId: msg.senderUserId != null ? String(msg.senderUserId) : null,
+      senderUserId: msg.senderUserId != null ? String(msg.senderUserId) : null
     }
   }
 
@@ -586,6 +590,7 @@ export function useChatMessaging(
         throw new Error(`Upload ${put.status}`)
       }
       clearPendingChatImage()
+      clearPendingChatFile()
       pendingChatImage.value = {
         objectKey: presign.objectKey,
         previewUrl: URL.createObjectURL(file)
@@ -607,13 +612,66 @@ export function useChatMessaging(
     }
   }
 
+  async function onChatFileSelected(ev) {
+    const input = ev.target
+    const file = input.files?.[0]
+    input.value = ''
+    if (!file || !active.value) {
+      return
+    }
+    const ext = String(file.name || '').split('.').pop()?.toLowerCase() || ''
+    const allowed = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'mp4', 'mov']
+    const isVideo = ['mp4', 'mov'].includes(ext)
+    const maxBytes = isVideo ? 200 * 1024 * 1024 : 25 * 1024 * 1024
+    if (!allowed.includes(ext)) {
+      notification.error({
+        message: 'File',
+        description: 'Chỉ gửi Word, Excel, PowerPoint, MP4 hoặc MOV.'
+      })
+      return
+    }
+    if (file.size > maxBytes) {
+      notification.error({
+        message: 'File quá lớn',
+        description: `Dung lượng tối đa là ${isVideo ? '200MB' : '25MB'}.`
+      })
+      return
+    }
+    try {
+      const res = await chatApi.presignChatFileUpload(active.value.id, {
+        contentType: file.type || 'application/octet-stream',
+        fileName: file.name,
+        size: file.size
+      })
+      const presign = unwrapChatData(res)
+      const put = await fetch(presign.uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: presign.headers || { 'Content-Type': file.type || 'application/octet-stream' }
+      })
+      if (!put.ok) {
+        throw new Error(`Upload ${put.status}`)
+      }
+      clearPendingChatImage()
+      clearPendingChatFile()
+      pendingChatFile.value = presign.attachment
+    } catch (e) {
+      console.error('chat file upload', e)
+      notification.error({
+        message: 'File',
+        description: e?.response?.data?.message || e?.message || 'Không upload được file.'
+      })
+    }
+  }
+
   async function send(unlockNotifyAudio, options = {}) {
     const text = draft.value.trim()
     const pending = pendingChatImage.value
+    const pendingFile = pendingChatFile.value
     const sticker = options?.sticker && typeof options.sticker === 'object'
       ? options.sticker
       : null
-    if ((!text && !pending && !sticker) || !active.value || sendPending.value) {
+    if ((!text && !pending && !pendingFile && !sticker) || !active.value || sendPending.value) {
       return
     }
     if (typeof unlockNotifyAudio === 'function') {
@@ -628,13 +686,16 @@ export function useChatMessaging(
       if (pending) {
         body.attachments = [{ kind: 'image', objectKey: pending.objectKey }]
       }
+      if (pendingFile) {
+        body.attachments = [pendingFile]
+      }
       if (sticker) {
         body.text = text || '[Sticker]'
         body.metadata = {
           kind: 'sticker',
           stickerId: String(sticker.id || ''),
           stickerPack: String(sticker.pack || ''),
-          stickerUrl: String(sticker.url || ''),
+          stickerUrl: String(sticker.url || '')
         }
       }
       if (replyTo.value?.id) {
@@ -648,12 +709,12 @@ export function useChatMessaging(
         active.value.messages.push(msg)
       }
       active.value.lastMessageId = String(msg.id)
-      const previewText = sticker ? '[sticker]' : (text || (pending ? '[đính kèm]' : ''))
+      const previewText = sticker ? '[sticker]' : (text || (pendingFile ? '[file]' : (pending ? '[đính kèm]' : '')))
       const uid = unref(myUserId)
       active.value.lastMessagePreview = {
         text: previewText,
         senderUserId: uid != null ? String(uid) : null,
-        messageType: 'text',
+        messageType: 'text'
       }
       active.value.lastMessage = previewText
       active.value.updatedAt = msg.at
@@ -661,6 +722,7 @@ export function useChatMessaging(
       refreshGroupSeenAvatarsOnConv(active.value)
       draft.value = ''
       clearPendingChatImage()
+      clearPendingChatFile()
       clearReplyToMessage()
       scrollMessagesToBottom()
     } catch (e) {
@@ -688,6 +750,7 @@ export function useChatMessaging(
     draft,
     replyTo,
     pendingChatImage,
+    pendingChatFile,
     messagesScrollEl,
     highlightedMessageId,
     active,
@@ -704,10 +767,12 @@ export function useChatMessaging(
     onConversationPinsUpdated,
     refreshPinnedMessages,
     clearPendingChatImage,
+    clearPendingChatFile,
     startReplyToMessage,
     clearReplyToMessage,
     jumpToMessage,
     onChatImageSelected,
+    onChatFileSelected,
     send,
     sendSticker
   }
