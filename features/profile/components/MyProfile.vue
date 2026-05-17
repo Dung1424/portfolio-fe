@@ -79,8 +79,8 @@
                         <button
                             type="button"
                             class="rounded-lg p-1.5 transition hover:bg-zinc-100 hover:text-zinc-950"
-                            aria-label="Copy profile link"
-                            @click="copyProfileLink"
+                            aria-label="Share profile link"
+                            @click="openShareProfileModal"
                         >
                             <i class="fa-solid fa-share-nodes" />
                         </button>
@@ -342,12 +342,18 @@
                 <div v-else class="px-8 py-10 text-center text-base text-zinc-500">No following found.</div>
             </div>
         </div>
+        <ChatShareModal
+            v-model:open="shareProfileOpen"
+            :share-url="profileShareUrl"
+            title="Chia sẻ trang cá nhân"
+        />
     </div>
 </template>
 
 <script>
 import { profileService } from '~/features/profile/services/profile.api.js'
 import { chatApi, unwrapChatData } from '~/features/chat/services/chat.api.js'
+import ChatShareModal from '~/features/chat/components/ChatShareModal.vue'
 import UpdateProfileModal from '~/features/account/components/profile/UpdateProfileModal.vue'
 import ProfilePhotoGrid from '~/features/profile/components/ProfilePhotoGrid.vue'
 import ProfileGalleryGrid from '~/features/profile/components/ProfileGalleryGrid.vue'
@@ -365,6 +371,7 @@ export default {
         UpdateProfileModal,
         ProfilePhotoGrid,
         ProfileGalleryGrid,
+        ChatShareModal,
     },
     setup() {
         const { resolveMediaUrl } = useResolvePublicMediaUrl()
@@ -389,6 +396,7 @@ export default {
             followingPopupVisible: false,
             /** POST /conversations/ensure khi bấm icon tin nhắn */
             chatOpening: false,
+            shareProfileOpen: false,
         };
     },
     computed: {
@@ -408,6 +416,10 @@ export default {
             return this.user.profile_picture
                 ? (this.resolveMediaUrl(this.user.profile_picture) || '/images/imageUserDefault.png')
                 : '/images/imageUserDefault.png';
+        },
+        profileShareUrl() {
+            if (typeof window === 'undefined') return ''
+            return window.location.href
         },
         coverPhotoUrl() {
             return this.user.cover_photo
@@ -723,6 +735,9 @@ export default {
             } finally {
                 this.chatOpening = false;
             }
+        },
+        openShareProfileModal() {
+            this.shareProfileOpen = true;
         },
         copyProfileLink() {
             const url = window.location.href;

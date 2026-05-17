@@ -108,8 +108,20 @@ export function mapApiMessageToUi(raw, myId) {
       : new Date()
   let imageUrl = ''
   const fileAttachments = []
+  const linkAttachments = []
   if (Array.isArray(raw?.attachments)) {
     for (const a of raw.attachments) {
+      if (a?.kind === 'link') {
+        linkAttachments.push({
+          url: typeof a.url === 'string' ? a.url : '',
+          normalizedUrl: typeof a.normalizedUrl === 'string' ? a.normalizedUrl : (typeof a.url === 'string' ? a.url : ''),
+          domain: typeof a.domain === 'string' ? a.domain : '',
+          title: typeof a.title === 'string' ? a.title : '',
+          description: typeof a.description === 'string' ? a.description : '',
+          imageUrl: typeof a.imageUrl === 'string' ? a.imageUrl : ''
+        })
+        continue
+      }
       if (a?.kind === 'file') {
         fileAttachments.push({
           objectKey: typeof a.objectKey === 'string' ? a.objectKey : '',
@@ -147,6 +159,8 @@ export function mapApiMessageToUi(raw, myId) {
     text = ''
   } else if (!text && fileAttachments.length > 0) {
     text = ''
+  } else if (!text && linkAttachments.length > 0) {
+    text = ''
   } else if (!text && Array.isArray(raw?.attachments) && raw.attachments.length > 0 && !imageUrl) {
     text = '[Attachment]'
   }
@@ -162,6 +176,7 @@ export function mapApiMessageToUi(raw, myId) {
     text,
     imageUrl,
     fileAttachments,
+    linkAttachments,
     isSticker,
     stickerUrl,
     me,

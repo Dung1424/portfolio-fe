@@ -486,57 +486,142 @@ defineExpose({ scrollRoot })
                 <div
                   v-for="file in row.msg.fileAttachments"
                   :key="file.objectKey || file.originalName"
-                  class="flex w-[260px] max-w-full items-center gap-3 rounded-xl border px-3 py-2.5"
-                  :class="row.msg.me ? 'border-white/20 bg-white/10 text-white' : 'border-zinc-200 bg-zinc-50 text-zinc-900'"
+                  class="max-w-full"
                 >
-                  <span
-                    class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
-                    :class="row.msg.me ? 'bg-white text-zinc-800' : 'bg-white ring-1 ring-zinc-200'"
+                  <div
+                    v-if="api.chatFileIsVideo(file) && api.chatFileCanDownload(file)"
+                    class="w-[300px] max-w-full overflow-hidden rounded-xl border"
+                    :class="row.msg.me ? 'border-white/20 bg-black/20' : 'border-zinc-200 bg-black'"
                   >
-                    <i class="text-[20px]" :class="api.chatFileIcon(file)" />
-                  </span>
-                  <div class="min-w-0 flex-1">
-                    <p class="truncate text-[13px] font-bold">
-                      {{ file.originalName || 'File' }}
-                    </p>
-                    <p
-                      class="mt-0.5 text-[11px]"
-                      :class="row.msg.me ? 'text-white/75' : 'text-zinc-500'"
-                    >
-                      {{ api.formatFileSize(file.size) }} · {{ api.chatFileStatusText(file) }}
-                    </p>
-                  </div>
-                  <a
-                    v-if="api.chatFileCanDownload(file)"
-                    :href="file.url"
-                    target="_blank"
-                    rel="noopener"
-                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition"
-                    :class="row.msg.me ? 'bg-white/15 text-white hover:bg-white/25' : 'bg-white text-[#1877f2] ring-1 ring-zinc-200 hover:bg-[#1877f2]/5'"
-                    title="Tải xuống"
-                    @click.stop
-                  >
-                    <i class="fa-solid fa-download text-[12px]" />
-                  </a>
-                  <span
-                    v-else
-                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-                    :class="file.status === 'blocked' ? 'bg-rose-100 text-rose-600' : 'bg-zinc-100 text-zinc-400'"
-                  >
-                    <i
-                      class="text-[12px]"
-                      :class="file.status === 'blocked' ? 'fa-solid fa-ban' : 'fa-solid fa-shield-halved'"
+                    <video
+                      :src="file.url"
+                      class="max-h-[360px] w-full bg-black"
+                      controls
+                      preload="metadata"
+                      playsinline
                     />
-                  </span>
+                    <div
+                      class="flex items-center gap-2 px-3 py-2"
+                      :class="row.msg.me ? 'text-white' : 'bg-white text-zinc-900'"
+                    >
+                      <i class="fa-solid fa-file-video shrink-0 text-[13px]" />
+                      <div class="min-w-0 flex-1">
+                        <p class="truncate text-[12px] font-semibold">
+                          {{ file.originalName || 'Video' }}
+                        </p>
+                        <p
+                          class="mt-0.5 text-[11px]"
+                          :class="row.msg.me ? 'text-white/70' : 'text-zinc-500'"
+                        >
+                          {{ api.formatFileSize(file.size) }}
+                        </p>
+                      </div>
+                      <a
+                        :href="file.url"
+                        target="_blank"
+                        rel="noopener"
+                        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition"
+                        :class="row.msg.me ? 'bg-white/15 text-white hover:bg-white/25' : 'bg-zinc-100 text-[#1877f2] hover:bg-[#1877f2]/10'"
+                        title="Tải xuống"
+                        @click.stop
+                      >
+                        <i class="fa-solid fa-download text-[12px]" />
+                      </a>
+                    </div>
+                  </div>
+                  <div
+                    v-else
+                    class="flex w-[260px] max-w-full items-center gap-3 rounded-xl border px-3 py-2.5"
+                    :class="row.msg.me ? 'border-white/20 bg-white/10 text-white' : 'border-zinc-200 bg-zinc-50 text-zinc-900'"
+                  >
+                    <span
+                      class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                      :class="row.msg.me ? 'bg-white text-zinc-800' : 'bg-white ring-1 ring-zinc-200'"
+                    >
+                      <i class="text-[20px]" :class="api.chatFileIcon(file)" />
+                    </span>
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-[13px] font-bold">
+                        {{ file.originalName || 'File' }}
+                      </p>
+                      <p
+                        class="mt-0.5 text-[11px]"
+                        :class="row.msg.me ? 'text-white/75' : 'text-zinc-500'"
+                      >
+                        {{ api.formatFileSize(file.size) }} · {{ api.chatFileStatusText(file) }}
+                      </p>
+                    </div>
+                    <a
+                      v-if="api.chatFileCanDownload(file)"
+                      :href="file.url"
+                      target="_blank"
+                      rel="noopener"
+                      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition"
+                      :class="row.msg.me ? 'bg-white/15 text-white hover:bg-white/25' : 'bg-white text-[#1877f2] ring-1 ring-zinc-200 hover:bg-[#1877f2]/5'"
+                      title="Tải xuống"
+                      @click.stop
+                    >
+                      <i class="fa-solid fa-download text-[12px]" />
+                    </a>
+                    <span
+                      v-else
+                      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                      :class="file.status === 'blocked' ? 'bg-rose-100 text-rose-600' : 'bg-zinc-100 text-zinc-400'"
+                    >
+                      <i
+                        class="text-[12px]"
+                        :class="file.status === 'blocked' ? 'fa-solid fa-ban' : 'fa-solid fa-shield-halved'"
+                      />
+                    </span>
+                  </div>
                 </div>
               </div>
               <p
                 v-if="!row.msg.recalledAt && !api.isCallLogMessage(row.msg) && row.msg.text && !row.msg.isSticker"
                 class="whitespace-pre-wrap break-words"
-                :class="row.msg.imageUrl || row.msg.fileAttachments?.length ? 'mt-2' : ''"
+                :class="row.msg.imageUrl || row.msg.fileAttachments?.length || row.msg.linkAttachments?.length ? 'mt-2' : ''"
               >
                 {{ row.msg.text }}
               </p>
+              <div
+                v-if="!row.msg.recalledAt && row.msg.linkAttachments?.length"
+                class="mt-2 space-y-2"
+              >
+                <a
+                  v-for="link in row.msg.linkAttachments"
+                  :key="link.normalizedUrl || link.url"
+                  :href="link.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="block w-[280px] max-w-full overflow-hidden rounded-xl border transition hover:opacity-95"
+                  :class="row.msg.me ? 'border-white/20 bg-white/10 text-white' : 'border-zinc-200 bg-zinc-50 text-zinc-900'"
+                  @click.stop
+                >
+                  <img
+                    v-if="link.imageUrl"
+                    :src="link.imageUrl"
+                    alt=""
+                    class="h-28 w-full object-cover"
+                    loading="lazy"
+                    decoding="async"
+                  >
+                  <div class="p-3">
+                    <p class="truncate text-[12px] font-semibold" :class="row.msg.me ? 'text-white/70' : 'text-zinc-500'">
+                      {{ link.domain || link.url }}
+                    </p>
+                    <p class="mt-1 line-clamp-2 text-[13px] font-bold">
+                      {{ link.title || link.url }}
+                    </p>
+                    <p
+                      v-if="link.description"
+                      class="mt-1 line-clamp-2 text-[12px]"
+                      :class="row.msg.me ? 'text-white/75' : 'text-zinc-500'"
+                    >
+                      {{ link.description }}
+                    </p>
+                  </div>
+                </a>
+              </div>
             </div>
           </div>
           <p

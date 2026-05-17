@@ -12,6 +12,16 @@ const props = defineProps({
   /** Thêm thành viên — { id, name, username, avatarUrl }[] */
   addMemberCandidates: { type: Array, default: () => [] },
   addMembersLoading: { type: Boolean, default: false },
+  mediaItems: { type: Array, default: () => [] },
+  mediaLoading: { type: Boolean, default: false },
+  mediaHasMore: { type: Boolean, default: false },
+  fileItems: { type: Array, default: () => [] },
+  fileLoading: { type: Boolean, default: false },
+  fileHasMore: { type: Boolean, default: false },
+  linkItems: { type: Array, default: () => [] },
+  linkLoading: { type: Boolean, default: false },
+  linkHasMore: { type: Boolean, default: false },
+  formatTime: { type: Function, required: true },
 })
 
 const emit = defineEmits([
@@ -24,6 +34,12 @@ const emit = defineEmits([
   'add-members',
   'remove-member',
   'open-user',
+  'pick-media',
+  'pick-file',
+  'pick-link',
+  'load-more-media',
+  'open-storage',
+  'clear-history',
 ])
 
 const editName = ref('')
@@ -175,6 +191,51 @@ function heroAvatarSrc() {
   }
   return c.groupAvatarUrl || c.peerAvatarUrl || props.defaultAvatarUrl
 }
+
+const mediaPreviewItems = computed(() => props.mediaItems.slice(0, 8))
+const filePreviewItems = computed(() => props.fileItems.slice(0, 3))
+const linkPreviewItems = computed(() => props.linkItems.slice(0, 3))
+
+function mediaTileKey(item, img, index) {
+  return `${String(item?.id ?? 'msg')}-${String(img?.objectKey || img?.url || index)}`
+}
+
+function fileRowKey(item, file, index) {
+  return `${String(item?.id ?? 'msg')}-${String(file?.objectKey || file?.originalName || index)}`
+}
+
+function linkRowKey(item, link, index) {
+  return `${String(item?.id ?? 'msg')}-${String(link?.normalizedUrl || link?.url || index)}`
+}
+
+function fileIcon(file) {
+  const ext = String(file?.extension || '').toLowerCase()
+  if (['doc', 'docx'].includes(ext)) return 'fa-regular fa-file-word text-blue-600'
+  if (['xls', 'xlsx'].includes(ext)) return 'fa-regular fa-file-excel text-emerald-600'
+  if (['ppt', 'pptx'].includes(ext)) return 'fa-regular fa-file-powerpoint text-orange-600'
+  if (['mp4', 'mov'].includes(ext)) return 'fa-solid fa-file-video text-violet-600'
+  return 'fa-regular fa-file-lines text-zinc-500'
+}
+
+function formatFileSize(bytes) {
+  const n = Number(bytes)
+  if (!Number.isFinite(n) || n <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = n
+  let index = 0
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024
+    index += 1
+  }
+  return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`
+}
+
+function fileStatusText(file) {
+  if (file?.status === 'ready') return 'Sẵn sàng tải xuống'
+  if (file?.status === 'blocked') return 'File bị chặn'
+  if (file?.status === 'failed') return 'Kiểm tra file thất bại'
+  return 'Đang kiểm tra file'
+}
 </script>
 
 <template>
@@ -183,6 +244,7 @@ function heroAvatarSrc() {
     placement="right"
     :width="drawerWidth"
     :closable="false"
+    :body-style="{ padding: '14px', background: '#f8fafc' }"
     root-class-name="chat-group-details-drawer"
     @close="onClose"
   >
@@ -200,7 +262,7 @@ function heroAvatarSrc() {
       </div>
     </template>
 
-    <div v-if="conversation" class="space-y-4 pb-6">
+    <div v-if="conversation" class="space-y-3 pb-6">
       <div
         v-if="loading"
         class="flex items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-[13px] text-zinc-500"
@@ -209,8 +271,8 @@ function heroAvatarSrc() {
         <span>Đang tải…</span>
       </div>
 
-      <section class="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-        <div class="flex items-start gap-3">
+      <section class="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-sm">
+        <div class="flex items-start gap-3.5">
           <button
             type="button"
             class="relative shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-[#1877f2] disabled:cursor-default"
@@ -222,11 +284,11 @@ function heroAvatarSrc() {
               alt=""
               width="72"
               height="72"
-              class="h-[72px] w-[72px] rounded-full object-cover ring-1 ring-zinc-200/90"
+              class="h-[72px] w-[72px] rounded-2xl object-cover ring-1 ring-zinc-200/90"
             >
             <span
               v-if="isAdmin && canInteract"
-              class="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-zinc-200"
+              class="absolute bottom-[-3px] right-[-3px] flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-zinc-200"
             >
               <i class="fa-solid fa-camera text-[11px] text-zinc-600" />
             </span>
@@ -258,7 +320,7 @@ function heroAvatarSrc() {
             </div>
             <h2
               v-else
-              class="truncate text-[18px] font-semibold leading-tight text-zinc-900"
+              class="truncate text-[18px] font-bold leading-tight text-zinc-900"
             >
               {{ conversation.name }}
             </h2>
@@ -279,14 +341,14 @@ function heroAvatarSrc() {
                 Đã rời nhóm
               </span>
             </div>
-            <div class="mt-3">
+            <div class="mt-3 rounded-xl bg-zinc-50 px-3 py-2">
               <div class="h-1.5 overflow-hidden rounded-full bg-zinc-100">
                 <div
                   class="h-full rounded-full bg-[#1877f2] transition-all"
                   :style="{ width: `${groupCapacityPercent}%` }"
                 />
               </div>
-              <p class="mt-1 text-[12px] text-zinc-500">
+              <p class="mt-1.5 text-[12px] text-zinc-500">
                 <template v-if="addMemberSlotsRemaining > 0">
                   Còn {{ addMemberSlotsRemaining }} chỗ trống.
                 </template>
@@ -303,7 +365,7 @@ function heroAvatarSrc() {
         <button
           v-if="isAdmin"
           type="button"
-          class="flex items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-[13px] font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-55"
+          class="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-[13px] font-semibold text-zinc-800 shadow-sm transition hover:border-[#1877f2]/25 hover:bg-[#1877f2]/5 disabled:cursor-not-allowed disabled:opacity-55"
           :disabled="!canAddMembers"
           @click="addOpen = true"
         >
@@ -313,11 +375,221 @@ function heroAvatarSrc() {
         <button
           v-if="!isAdmin"
           type="button"
-          class="flex items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-[13px] font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50"
+          class="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-[13px] font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50"
           @click="emit('leave')"
         >
           <i class="fa-solid fa-arrow-right-from-bracket text-[12px] text-zinc-500" />
           <span>Rời nhóm</span>
+        </button>
+      </section>
+
+      <section class="rounded-2xl border border-zinc-200/80 bg-white p-3 shadow-sm">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h3 class="flex items-center gap-2 text-[15px] font-bold text-zinc-900">
+            <i class="fa-regular fa-images text-[13px] text-[#1877f2]" />
+            Ảnh/Video
+          </h3>
+          <button
+            type="button"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
+            aria-label="Mở kho ảnh"
+            @click="emit('open-storage', 'media')"
+          >
+            <i class="fa-solid fa-chevron-down text-[12px]" />
+          </button>
+        </div>
+        <div
+          v-if="mediaLoading && !mediaItems.length"
+          class="rounded-lg bg-zinc-50 px-3 py-6 text-center text-[13px] text-zinc-500"
+        >
+          <i class="fa-solid fa-spinner fa-spin mr-1 text-[12px]" />
+          Đang tải ảnh…
+        </div>
+        <div
+          v-else-if="!mediaItems.length"
+          class="rounded-lg bg-zinc-50 px-3 py-6 text-center"
+        >
+          <i class="fa-regular fa-images text-[22px] text-zinc-300" />
+          <p class="mt-2 text-[13px] text-zinc-500">
+            Chưa có ảnh nào trong nhóm.
+          </p>
+        </div>
+        <div
+          v-else
+          class="grid grid-cols-4 gap-1.5"
+        >
+          <template
+            v-for="item in mediaPreviewItems"
+            :key="String(item.id)"
+          >
+            <button
+              v-for="(img, index) in item.images"
+              :key="mediaTileKey(item, img, index)"
+              type="button"
+              class="group relative aspect-square overflow-hidden rounded-xl bg-zinc-200 ring-1 ring-black/5 transition hover:scale-[0.98] hover:ring-[#1877f2]/50"
+              :title="formatTime(item.createdAt)"
+              @click="emit('pick-media', item)"
+            >
+              <img
+                :src="img.url"
+                alt=""
+                class="h-full w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              >
+              <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent px-1.5 pb-1 pt-4 text-[9px] font-semibold text-white opacity-0 transition group-hover:opacity-100">
+                {{ formatTime(item.createdAt) }}
+              </span>
+            </button>
+          </template>
+        </div>
+        <button
+          v-if="mediaItems.length || mediaHasMore"
+          type="button"
+          class="mt-3 w-full rounded-xl bg-zinc-100 py-2.5 text-[13px] font-bold text-zinc-800 transition hover:bg-zinc-200"
+          @click="emit('open-storage', 'media')"
+        >
+          Xem tất cả
+        </button>
+      </section>
+
+      <section class="rounded-2xl border border-zinc-200/80 bg-white p-3 shadow-sm">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h3 class="flex items-center gap-2 text-[15px] font-bold text-zinc-900">
+            <i class="fa-regular fa-file-lines text-[13px] text-zinc-500" />
+            Files
+          </h3>
+          <button
+            type="button"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
+            aria-label="Mở kho file"
+            @click="emit('open-storage', 'files')"
+          >
+            <i class="fa-solid fa-chevron-right text-[12px]" />
+          </button>
+        </div>
+        <div
+          v-if="fileLoading && !fileItems.length"
+          class="rounded-lg bg-zinc-50 px-3 py-6 text-center text-[13px] text-zinc-500"
+        >
+          <i class="fa-solid fa-spinner fa-spin mr-1 text-[12px]" />
+          Đang tải file…
+        </div>
+        <div
+          v-else-if="!fileItems.length"
+          class="rounded-lg bg-zinc-50 px-3 py-6 text-center"
+        >
+          <i class="fa-regular fa-file-lines text-[22px] text-zinc-300" />
+          <p class="mt-2 text-[13px] text-zinc-500">
+            Chưa có file nào trong nhóm.
+          </p>
+        </div>
+        <div
+          v-else
+          class="space-y-2"
+        >
+          <template
+            v-for="item in filePreviewItems"
+            :key="String(item.id)"
+          >
+            <button
+              v-for="(file, index) in item.files"
+              :key="fileRowKey(item, file, index)"
+              type="button"
+              class="flex w-full items-center gap-3 rounded-xl bg-zinc-50 p-2 text-left transition hover:bg-zinc-100"
+              @click="emit('pick-file', item)"
+            >
+              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white ring-1 ring-zinc-200">
+                <i
+                  class="text-[20px]"
+                  :class="fileIcon(file)"
+                />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-[13px] font-semibold text-zinc-900">
+                  {{ file.originalName || 'File' }}
+                </span>
+                <span class="mt-0.5 block truncate text-[12px] text-zinc-500">
+                  {{ formatFileSize(file.size) }} · {{ fileStatusText(file) }}
+                </span>
+              </span>
+            </button>
+          </template>
+        </div>
+        <button
+          v-if="fileItems.length || fileHasMore"
+          type="button"
+          class="mt-3 w-full rounded-xl bg-zinc-100 py-2.5 text-[13px] font-bold text-zinc-800 transition hover:bg-zinc-200"
+          @click="emit('open-storage', 'files')"
+        >
+          Xem tất cả
+        </button>
+      </section>
+
+      <section class="rounded-2xl border border-zinc-200/80 bg-white p-3 shadow-sm">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h3 class="flex items-center gap-2 text-[15px] font-bold text-zinc-900">
+            <i class="fa-solid fa-link text-[13px] text-zinc-500" />
+            Links
+          </h3>
+          <button
+            type="button"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
+            aria-label="Mở kho link"
+            @click="emit('open-storage', 'links')"
+          >
+            <i class="fa-solid fa-chevron-right text-[12px]" />
+          </button>
+        </div>
+        <div
+          v-if="linkLoading && !linkItems.length"
+          class="rounded-lg bg-zinc-50 px-3 py-6 text-center text-[13px] text-zinc-500"
+        >
+          <i class="fa-solid fa-spinner fa-spin mr-1 text-[12px]" />
+          Đang tải link…
+        </div>
+        <div
+          v-else-if="!linkItems.length"
+          class="rounded-lg bg-zinc-50 px-3 py-6 text-center"
+        >
+          <i class="fa-solid fa-link text-[22px] text-zinc-300" />
+          <p class="mt-2 text-[13px] text-zinc-500">
+            Chưa có link nào trong nhóm.
+          </p>
+        </div>
+        <div v-else class="space-y-2">
+          <template
+            v-for="item in linkPreviewItems"
+            :key="String(item.id)"
+          >
+            <button
+              v-for="(link, index) in item.links"
+              :key="linkRowKey(item, link, index)"
+              type="button"
+              class="flex w-full items-center gap-3 rounded-xl bg-zinc-50 p-2 text-left transition hover:bg-zinc-100"
+              @click="emit('pick-link', item)"
+            >
+              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-zinc-500 ring-1 ring-zinc-200">
+                <i class="fa-solid fa-link text-[17px]" />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-[13px] font-semibold text-zinc-900">
+                  {{ link.title || link.url }}
+                </span>
+                <span class="mt-0.5 block truncate text-[12px] text-zinc-500">
+                  {{ link.domain || link.url }}
+                </span>
+              </span>
+            </button>
+          </template>
+        </div>
+        <button
+          v-if="linkItems.length || linkHasMore"
+          type="button"
+          class="mt-3 w-full rounded-xl bg-zinc-100 py-2.5 text-[13px] font-bold text-zinc-800 transition hover:bg-zinc-200"
+          @click="emit('open-storage', 'links')"
+        >
+          Xem tất cả
         </button>
       </section>
 
@@ -331,11 +603,11 @@ function heroAvatarSrc() {
             <template v-if="inactiveMemberCount"> · {{ inactiveMemberCount }} đã rời</template>
           </span>
         </div>
-        <ul class="max-h-[320px] overflow-y-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
+        <ul class="max-h-[300px] overflow-y-auto rounded-2xl border border-zinc-200/80 bg-white shadow-sm">
           <li
             v-for="row in memberRows"
             :key="row.userId"
-            class="flex cursor-pointer items-center gap-3 border-b border-zinc-100 px-3 py-3 transition last:border-0 hover:bg-zinc-50"
+            class="flex cursor-pointer items-center gap-3 border-b border-zinc-100 px-3 py-2.5 transition last:border-0 hover:bg-zinc-50"
             :class="row.hasLeft ? 'opacity-55' : ''"
             role="button"
             tabindex="0"
@@ -346,11 +618,11 @@ function heroAvatarSrc() {
               v-if="row.avatarUrl"
               :src="row.avatarUrl"
               alt=""
-              class="h-10 w-10 shrink-0 rounded-full object-cover ring-1 ring-zinc-200/80"
+              class="h-10 w-10 shrink-0 rounded-xl object-cover ring-1 ring-zinc-200/80"
             >
             <div
               v-else
-              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-[11px] font-bold text-white"
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1877f2] text-[11px] font-bold text-white"
             >
               {{ row.initials }}
             </div>
@@ -396,7 +668,7 @@ function heroAvatarSrc() {
 
       <section
         v-if="isAdmin && canInteract"
-        class="rounded-lg border border-zinc-200 bg-zinc-50 p-3"
+        class="rounded-2xl border border-zinc-200/80 bg-white p-3 shadow-sm"
       >
         <div class="flex items-center gap-2">
           <a-select
@@ -408,7 +680,7 @@ function heroAvatarSrc() {
           />
           <button
             type="button"
-            class="shrink-0 rounded-lg bg-white px-3 py-2 text-[13px] font-semibold text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-45"
+            class="shrink-0 rounded-xl bg-zinc-900 px-3 py-2 text-[13px] font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400"
             :disabled="!transferTarget"
             @click="confirmTransfer"
           >
@@ -417,10 +689,21 @@ function heroAvatarSrc() {
         </div>
       </section>
 
-      <section v-if="isAdmin && canInteract" class="border-t border-zinc-200 pt-3">
+      <section class="rounded-2xl border border-rose-100 bg-white p-1 shadow-sm">
         <button
           type="button"
-          class="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-[14px] font-semibold text-rose-600 transition hover:bg-rose-50"
+          class="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[14px] font-semibold text-rose-600 transition hover:bg-rose-50"
+          @click="emit('clear-history')"
+        >
+          <i class="fa-regular fa-trash-can text-[12px]" />
+          Xóa lịch sử trò chuyện
+        </button>
+      </section>
+
+      <section v-if="isAdmin && canInteract" class="rounded-2xl border border-rose-100 bg-white p-1 shadow-sm">
+        <button
+          type="button"
+          class="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[14px] font-semibold text-rose-600 transition hover:bg-rose-50"
           @click="emit('dissolve')"
         >
           <i class="fa-solid fa-trash-can text-[12px]" />

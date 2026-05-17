@@ -23,6 +23,7 @@ import {
  * @param {import('vue').ComputedRef<string | null>} myUserId
  * @param {() => void} scheduleRefreshFolderUnreadTotals
  * @param {(isIncoming: boolean, conversationId: string) => void} maybePlayIncomingNotify
+ * @param {{ onMessagePersisted?: (payload: { conversationId: string, raw: unknown }) => void }} [callbacks]
  */
 export function useChatMessaging(
   conversations,
@@ -30,7 +31,8 @@ export function useChatMessaging(
   _mobileShowThread,
   myUserId,
   scheduleRefreshFolderUnreadTotals,
-  maybePlayIncomingNotify
+  maybePlayIncomingNotify,
+  callbacks = {}
 ) {
   const messagesLoading = ref(false)
   const loadingOlderMessages = ref(false)
@@ -410,6 +412,7 @@ export function useChatMessaging(
     const ui = mapApiMessageToUi(raw, my)
     conv.messages.push(ui)
     bumpConversationRowFromMessage(conv, raw, ui)
+    callbacks.onMessagePersisted?.({ conversationId, raw })
     if (!conv.notificationMuted) {
       maybePlayIncomingNotify(isIncoming, conversationId)
     }
@@ -467,6 +470,7 @@ export function useChatMessaging(
         messageType: 'text'
       }
     }
+    callbacks?.onMessagePersisted?.({ conversationId, raw })
     scheduleRefreshFolderUnreadTotals()
   }
 
@@ -720,6 +724,7 @@ export function useChatMessaging(
       }
       active.value.lastMessage = previewText
       active.value.updatedAt = msg.at
+      callbacks.onMessagePersisted?.({ conversationId: String(active.value.id), raw })
       mergeParticipantReceiptsFromEnvelope(active.value, data)
       refreshGroupSeenAvatarsOnConv(active.value)
       draft.value = ''
