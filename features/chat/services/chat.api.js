@@ -230,6 +230,14 @@ export const chatApi = {
     )
   },
 
+  clearConversationHistory(conversationId) {
+    return axios.post(
+      getUrlList().chatConversationClearHistory(conversationId),
+      {},
+      authConfig({ headers: { 'Content-Type': 'application/json' } })
+    )
+  },
+
   getMessagingEligibility(conversationId) {
     return axios.get(
       getUrlList().chatMessagingEligibility(conversationId),
@@ -254,6 +262,39 @@ export const chatApi = {
       ...authConfig(),
       params: {
         chunkSize: 20,
+        ...params
+      }
+    })
+  },
+
+  /** Query: chunkSize (max 60), cursor */
+  listConversationMedia(conversationId, params = {}) {
+    return axios.get(getUrlList().chatConversationMessagesMedia(conversationId), {
+      ...authConfig(),
+      params: {
+        chunkSize: 36,
+        ...params
+      }
+    })
+  },
+
+  /** Query: chunkSize (max 60), cursor */
+  listConversationFiles(conversationId, params = {}) {
+    return axios.get(getUrlList().chatConversationMessagesFiles(conversationId), {
+      ...authConfig(),
+      params: {
+        chunkSize: 36,
+        ...params
+      }
+    })
+  },
+
+  /** Query: chunkSize (max 60), cursor */
+  listConversationLinks(conversationId, params = {}) {
+    return axios.get(getUrlList().chatConversationMessagesLinks(conversationId), {
+      ...authConfig(),
+      params: {
+        chunkSize: 36,
         ...params
       }
     })

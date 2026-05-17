@@ -229,6 +229,11 @@
                     <div v-else class="p-8 text-center text-base text-[#666]">No likes found.</div>
                 </div>
             </div>
+            <ChatShareModal
+                v-model:open="sharePhotoOpen"
+                :share-url="photoShareUrl"
+                title="Chia sẻ ảnh"
+            />
 </template>
 
 <script>
@@ -245,6 +250,7 @@ import ReportCommentModal from '~/features/photo/components/ReportCommentModal.v
 import ReportGalleryModal from '~/features/gallery/components/ReportGalleryModal.vue'
 import PhotoDetailSidebarBody from '~/features/photo/components/PhotoDetailSidebarBody.vue'
 import PhotoDetailActionsBar from '~/features/photo/components/PhotoDetailActionsBar.vue'
+import ChatShareModal from '~/features/chat/components/ChatShareModal.vue'
 import { Modal, notification } from 'ant-design-vue';
 import { h } from 'vue';
 import { ExclamationCircleOutlined } from '@ant-design/icons-vue';
@@ -258,6 +264,7 @@ export default {
         ReportGalleryModal,
         PhotoDetailSidebarBody,
         PhotoDetailActionsBar,
+        ChatShareModal,
     },
     setup() {
         const { resolveMediaUrl } = useResolvePublicMediaUrl()
@@ -317,6 +324,7 @@ export default {
             relatedGalleries: [],
             /** Chỉ mount một bản sidebar (mobile vs desktop) — tránh 2 ô comment / ref trùng */
             layoutDesktop: false,
+            sharePhotoOpen: false,
         };
     },
     watch: {
@@ -398,6 +406,10 @@ export default {
         },
     },
     computed: {
+        photoShareUrl() {
+            if (typeof window === 'undefined') return ''
+            return window.location.href
+        },
         isFollowing() {
             return this.photoDetail.user?.id
                 && useFollowStore().followingList.includes(this.photoDetail.user.id);
@@ -933,23 +945,7 @@ export default {
             }
         },
         copyUrlToClipboard() {
-            const url = window.location.href; // Lấy URL hiện tại của trình duyệt
-            navigator.clipboard.writeText(url).then(() => {
-                notification.success({
-                    message: 'Success',
-                    description: 'URL has been copied to the clipboard.',
-                    placement: 'topRight',
-                    duration: 3,
-                });
-            }).catch(err => {
-                console.error('Failed to copy URL:', err);
-                notification.error({
-                    message: 'Error',
-                    description: 'Failed to copy URL.',
-                    placement: 'topRight',
-                    duration: 3,
-                });
-            });
+            this.sharePhotoOpen = true;
         },
         openFullScreen() {
             const img = document.createElement('img');

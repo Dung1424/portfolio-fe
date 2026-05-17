@@ -20,6 +20,8 @@ import ChatPinnedMessagesSection from '~/features/chat/components/ChatPinnedMess
 import ChatMessageList from '~/features/chat/components/ChatMessageList.vue'
 import ChatComposer from '~/features/chat/components/ChatComposer.vue'
 import ChatGroupDetailsDrawer from '~/features/chat/components/ChatGroupDetailsDrawer.vue'
+import ChatDirectDetailsDrawer from '~/features/chat/components/ChatDirectDetailsDrawer.vue'
+import ChatStorageDrawer from '~/features/chat/components/ChatStorageDrawer.vue'
 import ChatGroupCallStage from '~/features/chat/components/ChatGroupCallStage.vue'
 import { useChatThreadSearch } from '~/features/chat/composables/useChatThreadSearch.js'
 import { useChatStickerPicker } from '~/features/chat/composables/useChatStickerPicker.js'
@@ -72,7 +74,25 @@ const {
 const myUserId = computed(() => userStore.user?.id ?? null)
 
 const groupDetailsOpen = ref(false)
+const directDetailsOpen = ref(false)
+const storageDrawerOpen = ref(false)
+const storageDrawerTab = ref('media')
 const accountSettingsOpen = ref(false)
+const mediaPanelLoading = ref(false)
+const mediaPanelLoaded = ref(false)
+const mediaPanelItems = ref([])
+const mediaPanelNextCursor = ref(null)
+const mediaPanelHasMore = ref(false)
+const filePanelLoading = ref(false)
+const filePanelLoaded = ref(false)
+const filePanelItems = ref([])
+const filePanelNextCursor = ref(null)
+const filePanelHasMore = ref(false)
+const linkPanelLoading = ref(false)
+const linkPanelLoaded = ref(false)
+const linkPanelItems = ref([])
+const linkPanelNextCursor = ref(null)
+const linkPanelHasMore = ref(false)
 const activeStatusVisible = ref(true)
 const activeStatusLoading = ref(false)
 const notificationSoundEnabled = ref(true)
@@ -112,6 +132,7 @@ const messaging = useChatMessaging(
   myUserId,
   scheduleRefreshFolderUnreadTotals,
   maybePlayIncomingNotify,
+  { onMessagePersisted: syncMediaItemFromRaw },
 )
 
 const {
@@ -685,7 +706,8 @@ async function onChatHeaderIdentityClick() {
     groupDetailsOpen.value = true
   }
   else {
-    await openPeerProfile(c)
+    unlockNotifyAudio()
+    directDetailsOpen.value = true
   }
 }
 
@@ -973,12 +995,314 @@ function jumpToOriginalMessage(messageId) {
   jumpToMessage(messageId)
 }
 
+function toggleThreadSearchPanel() {
+  toggleThreadSearch()
+}
+
+function mediaItemFromRaw(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return null
+  }
+  const id = raw.id != null ? String(raw.id) : ''
+  if (!id) {
+    return null
+  }
+  const images = (Array.isArray(raw.attachments) ? raw.attachments : [])
+    .filter(a => a?.kind === 'image' && typeof a.url === 'string' && a.url.trim())
+    .map(a => ({
+      objectKey: typeof a.objectKey === 'string' ? a.objectKey : '',
+      url: String(a.url),
+    }))
+  if (!images.length) {
+    return null
+  }
+  return {
+    id,
+    senderUserId: raw.senderUserId != null ? String(raw.senderUserId) : '',
+    createdAt: raw.createdAt ?? raw.updatedAt ?? new Date().toISOString(),
+    isOwn: myUserId.value != null && String(raw.senderUserId ?? '') === String(myUserId.value),
+    images,
+  }
+}
+
+function fileItemFromRaw(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return null
+  }
+  const id = raw.id != null ? String(raw.id) : ''
+  if (!id) {
+    return null
+  }
+  const files = (Array.isArray(raw.attachments) ? raw.attachments : [])
+    .filter(a => a?.kind === 'file' && typeof a.objectKey === 'string' && a.objectKey.trim())
+    .map(a => ({
+      objectKey: typeof a.objectKey === 'string' ? a.objectKey : '',
+      url: typeof a.url === 'string' ? a.url : '',
+      originalName: typeof a.originalName === 'string' ? a.originalName : 'File',
+      contentType: typeof a.contentType === 'string' ? a.contentType : '',
+      extension: typeof a.extension === 'string' ? a.extension : '',
+      size: Number.isFinite(Number(a.size)) ? Number(a.size) : 0,
+      fileCategory: typeof a.fileCategory === 'string' ? a.fileCategory : 'document',
+      status: typeof a.status === 'string' ? a.status : 'pending_scan',
+      scan: a.scan && typeof a.scan === 'object' ? a.scan : null,
+      media: a.media && typeof a.media === 'object' ? a.media : null,
+    }))
+  if (!files.length) {
+    return null
+  }
+  return {
+    id,
+    senderUserId: raw.senderUserId != null ? String(raw.senderUserId) : '',
+    createdAt: raw.createdAt ?? raw.updatedAt ?? new Date().toISOString(),
+    isOwn: myUserId.value != null && String(raw.senderUserId ?? '') === String(myUserId.value),
+    files,
+  }
+}
+
+function linkItemFromRaw(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const id = raw.id != null ? String(raw.id) : ''
+  if (!id) return null
+  const links = (Array.isArray(raw.attachments) ? raw.attachments : [])
+    .filter(a => a?.kind === 'link' && typeof a.url === 'string' && a.url.trim())
+    .map(a => ({
+      url: typeof a.url === 'string' ? a.url : '',
+      normalizedUrl: typeof a.normalizedUrl === 'string' ? a.normalizedUrl : (typeof a.url === 'string' ? a.url : ''),
+      domain: typeof a.domain === 'string' ? a.domain : '',
+      title: typeof a.title === 'string' ? a.title : '',
+      description: typeof a.description === 'string' ? a.description : '',
+      imageUrl: typeof a.imageUrl === 'string' ? a.imageUrl : '',
+    }))
+  if (!links.length) return null
+  return {
+    id,
+    senderUserId: raw.senderUserId != null ? String(raw.senderUserId) : '',
+    createdAt: raw.createdAt ?? raw.updatedAt ?? new Date().toISOString(),
+    isOwn: myUserId.value != null && String(raw.senderUserId ?? '') === String(myUserId.value),
+    links,
+  }
+}
+
+function syncMediaItemFromRaw(payload) {
+  const cid = payload?.conversationId != null ? String(payload.conversationId) : ''
+  if (!cid || String(active.value?.id ?? '') !== cid) {
+    return
+  }
+  if (!mediaPanelLoaded.value && !groupDetailsOpen.value && !directDetailsOpen.value && !storageDrawerOpen.value) {
+    return
+  }
+  const item = mediaItemFromRaw(payload.raw)
+  if (item) {
+    mediaPanelItems.value = [
+      item,
+      ...mediaPanelItems.value.filter(row => String(row.id) !== item.id),
+    ]
+  }
+  const fileItem = fileItemFromRaw(payload.raw)
+  if (fileItem && (filePanelLoaded.value || storageDrawerOpen.value)) {
+    filePanelItems.value = [
+      fileItem,
+      ...filePanelItems.value.filter(row => String(row.id) !== fileItem.id),
+    ]
+  }
+  const linkItem = linkItemFromRaw(payload.raw)
+  if (linkItem && (linkPanelLoaded.value || storageDrawerOpen.value)) {
+    linkPanelItems.value = [
+      linkItem,
+      ...linkPanelItems.value.filter(row => String(row.id) !== linkItem.id),
+    ]
+  }
+}
+
+function storageSenderLabel(item) {
+  if (item?.isOwn) {
+    return 'Bạn'
+  }
+  const sid = item?.senderUserId != null ? String(item.senderUserId) : ''
+  if (active.value && !active.value.isGroup) {
+    return active.value.peerName || active.value.name || 'Người gửi'
+  }
+  if (sid) {
+    const row = groupSenderDisplayByUserId.value[sid]
+    if (row?.name) {
+      return row.name
+    }
+    const cached = chatUserMiniCache.get(sid)
+    if (cached?.name) {
+      return cached.name
+    }
+  }
+  return 'Thành viên'
+}
+
+function resetMediaPanelState() {
+  mediaPanelLoaded.value = false
+  mediaPanelItems.value = []
+  mediaPanelNextCursor.value = null
+  mediaPanelHasMore.value = false
+  mediaPanelLoading.value = false
+  filePanelLoaded.value = false
+  filePanelItems.value = []
+  filePanelNextCursor.value = null
+  filePanelHasMore.value = false
+  filePanelLoading.value = false
+  linkPanelLoaded.value = false
+  linkPanelItems.value = []
+  linkPanelNextCursor.value = null
+  linkPanelHasMore.value = false
+  linkPanelLoading.value = false
+}
+
+async function fetchConversationMedia({ append = false } = {}) {
+  const cid = active.value?.id
+  if (!cid || mediaPanelLoading.value) {
+    return
+  }
+  mediaPanelLoading.value = true
+  try {
+    const res = await chatApi.listConversationMedia(cid, {
+      chunkSize: 36,
+      ...(append && mediaPanelNextCursor.value
+        ? { cursor: mediaPanelNextCursor.value }
+        : {}),
+    })
+    const data = unwrapChatData(res)
+    const rows = Array.isArray(data?.items) ? data.items : []
+    mediaPanelItems.value = append
+      ? [...mediaPanelItems.value, ...rows]
+      : rows
+    mediaPanelLoaded.value = true
+    mediaPanelNextCursor.value = data?.nextCursor ?? null
+    mediaPanelHasMore.value = Boolean(data?.hasMore)
+  }
+  catch (e) {
+    console.error('listConversationMedia', e)
+    notification.error({
+      message: 'Ảnh đã gửi',
+      description: e?.response?.data?.message || 'Không tải được danh sách ảnh.',
+    })
+  }
+  finally {
+    mediaPanelLoading.value = false
+  }
+}
+
+async function fetchConversationFiles({ append = false } = {}) {
+  const cid = active.value?.id
+  if (!cid || filePanelLoading.value) {
+    return
+  }
+  filePanelLoading.value = true
+  try {
+    const res = await chatApi.listConversationFiles(cid, {
+      chunkSize: 36,
+      ...(append && filePanelNextCursor.value
+        ? { cursor: filePanelNextCursor.value }
+        : {}),
+    })
+    const data = unwrapChatData(res)
+    const rows = Array.isArray(data?.items) ? data.items : []
+    filePanelItems.value = append
+      ? [...filePanelItems.value, ...rows]
+      : rows
+    filePanelLoaded.value = true
+    filePanelNextCursor.value = data?.nextCursor ?? null
+    filePanelHasMore.value = Boolean(data?.hasMore)
+  }
+  catch (e) {
+    console.error('listConversationFiles', e)
+    notification.error({
+      message: 'Files',
+      description: e?.response?.data?.message || 'Không tải được danh sách file.',
+    })
+  }
+  finally {
+    filePanelLoading.value = false
+  }
+}
+
+async function fetchConversationLinks({ append = false } = {}) {
+  const cid = active.value?.id
+  if (!cid || linkPanelLoading.value) return
+  linkPanelLoading.value = true
+  try {
+    const res = await chatApi.listConversationLinks(cid, {
+      chunkSize: 36,
+      ...(append && linkPanelNextCursor.value ? { cursor: linkPanelNextCursor.value } : {}),
+    })
+    const data = unwrapChatData(res)
+    const rows = Array.isArray(data?.items) ? data.items : []
+    linkPanelItems.value = append ? [...linkPanelItems.value, ...rows] : rows
+    linkPanelLoaded.value = true
+    linkPanelNextCursor.value = data?.nextCursor ?? null
+    linkPanelHasMore.value = Boolean(data?.hasMore)
+  } catch (e) {
+    console.error('listConversationLinks', e)
+    notification.error({
+      message: 'Links',
+      description: e?.response?.data?.message || 'Không tải được danh sách link.',
+    })
+  } finally {
+    linkPanelLoading.value = false
+  }
+}
+
+async function onGroupDrawerMediaPick(item) {
+  const id = item?.id != null ? String(item.id) : ''
+  if (!id) {
+    return
+  }
+  groupDetailsOpen.value = false
+  directDetailsOpen.value = false
+  storageDrawerOpen.value = false
+  await jumpToMessage(id)
+}
+
+async function openStorageDrawer(tab = 'media') {
+  storageDrawerTab.value = tab
+  groupDetailsOpen.value = false
+  directDetailsOpen.value = false
+  storageDrawerOpen.value = true
+  if (tab === 'files' && !filePanelLoaded.value) {
+    await fetchConversationFiles({ append: false })
+  }
+  if (tab === 'links' && !linkPanelLoaded.value) {
+    await fetchConversationLinks({ append: false })
+  }
+  if (tab === 'media' && !mediaPanelLoaded.value) {
+    await fetchConversationMedia({ append: false })
+  }
+}
+
+async function onDirectDrawerOpenProfile(conv) {
+  directDetailsOpen.value = false
+  await openPeerProfile(conv)
+}
+
 const messageListRef = ref(null)
 const groupDrawerRef = ref(null)
 
 watchEffect(() => {
   const root = messageListRef.value?.scrollRoot
   messagesScrollEl.value = root ?? null
+})
+
+watch(selectedId, () => {
+  storageDrawerOpen.value = false
+  resetMediaPanelState()
+})
+
+watch(storageDrawerTab, (tab) => {
+  if (!storageDrawerOpen.value) {
+    return
+  }
+  if (tab === 'files' && !filePanelLoaded.value) {
+    void fetchConversationFiles({ append: false })
+  } else if (tab === 'links' && !linkPanelLoaded.value) {
+    void fetchConversationLinks({ append: false })
+  } else if (tab === 'media' && !mediaPanelLoaded.value) {
+    void fetchConversationMedia({ append: false })
+  }
 })
 
 function incomingAvatarKey(msg) {
@@ -1109,6 +1433,7 @@ const messageListApi = computed(() => ({
   formatToolDate,
   formatFileSize,
   chatFileIcon,
+  chatFileIsVideo,
   chatFileStatusText,
   chatFileCanDownload,
   pollOptionPercent,
@@ -1347,6 +1672,44 @@ async function setConversationNotificationMute(duration) {
   }
 }
 
+function confirmClearConversationHistory() {
+  const cid = active.value?.id
+  if (!cid) return
+  Modal.confirm({
+    title: 'Xóa lịch sử trò chuyện?',
+    content: 'Chỉ xóa lịch sử ở phía bạn. Người khác vẫn xem được các tin nhắn cũ.',
+    okText: 'Xóa',
+    okType: 'danger',
+    cancelText: 'Hủy',
+    async onOk() {
+      try {
+        const res = await chatApi.clearConversationHistory(cid)
+        const data = unwrapChatData(res)
+        active.value.messages = []
+        active.value.lastMessage = ''
+        active.value.lastMessagePreview = null
+        active.value.lastMessageId = null
+        active.value.lastMessageAt = null
+        active.value.unreadCount = 0
+        if (data?.conversation) {
+          active.value.historyCleared = Boolean(data.conversation.historyCleared)
+        }
+        resetMediaPanelState()
+        threadSearchOpen.value = false
+        threadSearchResults.value = []
+        await loadConversationList()
+        notification.success({ message: 'Đã xóa lịch sử trò chuyện' })
+      } catch (e) {
+        console.error('clear conversation history', e)
+        notification.error({
+          message: 'Xóa lịch sử',
+          description: e?.response?.data?.message || 'Không xóa được lịch sử trò chuyện.',
+        })
+      }
+    },
+  })
+}
+
 function endCall() {
   hangupActiveCall('hangup')
 }
@@ -1466,6 +1829,12 @@ function chatFileIcon(file) {
   if (['ppt', 'pptx'].includes(ext)) return 'fa-regular fa-file-powerpoint text-orange-600'
   if (['mp4', 'mov'].includes(ext)) return 'fa-solid fa-file-video text-violet-600'
   return 'fa-regular fa-file-lines text-zinc-600'
+}
+
+function chatFileIsVideo(file) {
+  const ext = String(file?.extension || '').toLowerCase()
+  const type = String(file?.contentType || '').toLowerCase()
+  return ['mp4', 'mov'].includes(ext) || type.startsWith('video/')
 }
 
 function chatFileStatusText(file) {
@@ -1611,7 +1980,7 @@ async function addGroupPollOptionFromCard(tool) {
 }
 
 async function openCreateReminderModal() {
-  if (!active.value?.isGroup || !messagingAllowed.value) {
+  if (!active.value || !messagingAllowed.value) {
     return
   }
   reminderTitle.value = ''
@@ -1642,7 +2011,7 @@ function toggleReminderTargetUser(userId) {
 async function submitCreateReminder() {
   const cid = active.value?.id
   const title = reminderTitle.value.trim()
-  if (!cid || !active.value?.isGroup || !title) {
+  if (!cid || !title) {
     notification.warning({ message: 'Nhập tiêu đề nhắc hẹn' })
     return
   }
@@ -2399,6 +2768,19 @@ watch(groupDetailsOpen, (open) => {
     void Promise.all([
       hydrateGroupDetailMemberRows(),
       buildAddMemberCandidateList(),
+      mediaPanelLoaded.value ? Promise.resolve() : fetchConversationMedia({ append: false }),
+      filePanelLoaded.value ? Promise.resolve() : fetchConversationFiles({ append: false }),
+      linkPanelLoaded.value ? Promise.resolve() : fetchConversationLinks({ append: false }),
+    ])
+  }
+})
+
+watch(directDetailsOpen, (open) => {
+  if (open && active.value && !active.value.isGroup) {
+    void Promise.all([
+      mediaPanelLoaded.value ? Promise.resolve() : fetchConversationMedia({ append: false }),
+      filePanelLoaded.value ? Promise.resolve() : fetchConversationFiles({ append: false }),
+      linkPanelLoaded.value ? Promise.resolve() : fetchConversationLinks({ append: false }),
     ])
   }
 })
@@ -2407,6 +2789,8 @@ let socketConnectJoin = () => {}
 
 watch(selectedId, async (id, oldId) => {
   groupDetailsOpen.value = false
+  directDetailsOpen.value = false
+  storageDrawerOpen.value = false
   groupSenderDisplayByUserId.value = {}
   receiptDetailForMessageId.value = null
   messageActionMenuId.value = null
@@ -2885,7 +3269,7 @@ onUnmounted(() => {
                       </button>
                       <template #overlay>
                         <a-menu>
-                          <a-menu-item key="search" @click="toggleThreadSearch">
+                          <a-menu-item key="search" @click="toggleThreadSearchPanel">
                             <span class="flex items-center gap-2">
                               <i class="fa-solid fa-magnifying-glass w-4 text-[12px]" />
                               <span>{{ threadSearchOpen ? 'Đóng tìm kiếm' : 'Tìm trong hội thoại' }}</span>
@@ -3285,67 +3669,66 @@ onUnmounted(() => {
     title="Cài đặt tài khoản"
     placement="right"
     :width="380"
+    :body-style="{ padding: '18px', background: '#f8fafc' }"
   >
-    <div class="space-y-4">
-      <div class="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3">
-        <img
-          :src="userStore.user?.avatarUrl || userStore.user?.avatar || defaultAvatarUrl"
-          alt=""
-          class="h-11 w-11 rounded-full object-cover ring-1 ring-zinc-200"
-        >
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-[15px] font-semibold text-zinc-900">
-            {{ userStore.user?.fullName || userStore.user?.name || userStore.user?.username || 'Tài khoản' }}
-          </p>
-          <p
-            v-if="userStore.user?.username"
-            class="truncate text-[12px] text-zinc-500"
+    <div class="space-y-3">
+      <div class="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+        <div class="flex items-center gap-3 bg-gradient-to-r from-[#1877f2]/10 via-white to-white p-3.5">
+          <img
+            :src="userStore.user?.avatarUrl || userStore.user?.avatar || defaultAvatarUrl"
+            alt=""
+            class="h-12 w-12 rounded-full object-cover ring-2 ring-white shadow-sm"
           >
-            @{{ userStore.user.username }}
-          </p>
-        </div>
-        <NuxtLink
-          to="/account"
-          class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-[#1877f2]"
-          title="Trang tài khoản"
-          @click="accountSettingsOpen = false"
-        >
-          <i class="fa-solid fa-arrow-up-right-from-square text-[12px]" />
-        </NuxtLink>
-      </div>
-
-      <section class="rounded-xl border border-zinc-200 bg-white">
-        <div class="flex items-start justify-between gap-3 border-b border-zinc-100 p-4">
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <i class="fa-solid fa-circle text-[9px] text-emerald-500" />
-              <h3 class="text-[14px] font-semibold text-zinc-900">
-                Trạng thái hoạt động
-              </h3>
-            </div>
-            <p class="mt-1 text-[12px] leading-5 text-zinc-500">
-              Khi tắt, người khác không thấy bạn online/last seen và bạn cũng không thấy trạng thái hoạt động của họ.
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-[15px] font-bold leading-tight text-zinc-900">
+              {{ userStore.user?.fullName || userStore.user?.name || userStore.user?.username || 'Tài khoản' }}
+            </p>
+            <p
+              v-if="userStore.user?.username"
+              class="mt-0.5 truncate text-[12px] text-zinc-500"
+            >
+              @{{ userStore.user.username }}
             </p>
           </div>
-          <button
-            type="button"
-            class="inline-flex h-8 min-w-[54px] shrink-0 items-center justify-center rounded-full px-3 text-[12px] font-semibold transition disabled:cursor-wait disabled:opacity-60"
-            :class="activeStatusVisible ? 'bg-[#1877f2] text-white' : 'bg-zinc-200 text-zinc-600'"
-            :disabled="activeStatusLoading"
-            @click="toggleActiveStatusVisible"
+          <NuxtLink
+            to="/account"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#1877f2] shadow-sm ring-1 ring-zinc-200 transition hover:bg-[#1877f2] hover:text-white"
+            title="Trang tài khoản"
+            @click="accountSettingsOpen = false"
           >
-            <i
-              v-if="activeStatusLoading"
-              class="fa-solid fa-spinner fa-spin text-[11px]"
-            />
-            <span v-else>{{ activeStatusVisible ? 'Bật' : 'Tắt' }}</span>
-          </button>
+            <i class="fa-solid fa-arrow-up-right-from-square text-[12px]" />
+          </NuxtLink>
+        </div>
+      </div>
+
+      <section class="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+        <div class="px-4 pb-2 pt-3">
+          <p class="text-[12px] font-bold uppercase tracking-[0.08em] text-zinc-400">
+            Quyền riêng tư
+          </p>
         </div>
         <div class="divide-y divide-zinc-100">
-          <div class="flex items-center justify-between gap-3 px-4 py-3">
-            <div>
+          <div class="flex items-center gap-3 px-4 py-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+              <i class="fa-solid fa-circle text-[9px]" />
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="text-[13px] font-semibold text-zinc-900">Trạng thái hoạt động</p>
+              <p class="mt-0.5 text-[12px] leading-5 text-zinc-500">Ẩn online/last seen với người khác.</p>
+            </div>
+            <a-switch
+              :checked="activeStatusVisible"
+              :loading="activeStatusLoading"
+              @change="toggleActiveStatusVisible"
+            />
+          </div>
+          <div class="flex items-center gap-3 px-4 py-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-600">
+              <i class="fa-solid fa-volume-high text-[13px]" />
+            </span>
+            <div class="min-w-0 flex-1">
               <p class="text-[13px] font-semibold text-zinc-900">Âm thanh thông báo</p>
-              <p class="text-[12px] text-zinc-500">Phát tiếng khi có tin nhắn mới.</p>
+              <p class="mt-0.5 text-[12px] leading-5 text-zinc-500">Phát tiếng khi có tin mới.</p>
             </div>
             <a-switch
               :checked="notificationSoundEnabled"
@@ -3353,10 +3736,13 @@ onUnmounted(() => {
               @change="value => patchAccountSetting('notificationSoundEnabled', value)"
             />
           </div>
-          <div class="flex items-center justify-between gap-3 px-4 py-3">
-            <div>
+          <div class="flex items-center gap-3 px-4 py-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600">
+              <i class="fa-regular fa-message text-[13px]" />
+            </span>
+            <div class="min-w-0 flex-1">
               <p class="text-[13px] font-semibold text-zinc-900">Preview tin nhắn</p>
-              <p class="text-[12px] text-zinc-500">Hiển thị nội dung tin trong toast.</p>
+              <p class="mt-0.5 text-[12px] leading-5 text-zinc-500">Hiện nội dung trong toast.</p>
             </div>
             <a-switch
               :checked="messagePreviewEnabled"
@@ -3364,10 +3750,13 @@ onUnmounted(() => {
               @change="value => patchAccountSetting('messagePreviewEnabled', value)"
             />
           </div>
-          <div class="flex items-center justify-between gap-3 px-4 py-3">
-            <div>
-              <p class="text-[13px] font-semibold text-zinc-900">Quyền riêng tư đã xem</p>
-              <p class="text-[12px] text-zinc-500">Tắt thì bạn không gửi và không thấy trạng thái đã xem.</p>
+          <div class="flex items-center gap-3 px-4 py-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+              <i class="fa-regular fa-eye text-[13px]" />
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="text-[13px] font-semibold text-zinc-900">Đã xem</p>
+              <p class="mt-0.5 text-[12px] leading-5 text-zinc-500">Không gửi/không thấy khi tắt.</p>
             </div>
             <a-switch
               :checked="readReceiptsEnabled"
@@ -3375,10 +3764,13 @@ onUnmounted(() => {
               @change="value => patchAccountSetting('readReceiptsEnabled', value)"
             />
           </div>
-          <div class="flex items-center justify-between gap-3 px-4 py-3">
-            <div>
-              <p class="text-[13px] font-semibold text-zinc-900">Hiện trạng thái đang nhập</p>
-              <p class="text-[12px] text-zinc-500">Tắt thì người khác không thấy bạn đang nhập.</p>
+          <div class="flex items-center gap-3 px-4 py-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+              <i class="fa-solid fa-keyboard text-[13px]" />
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="text-[13px] font-semibold text-zinc-900">Đang nhập</p>
+              <p class="mt-0.5 text-[12px] leading-5 text-zinc-500">Ẩn “đang nhập” với người khác.</p>
             </div>
             <a-switch
               :checked="typingStatusVisible"
@@ -3389,10 +3781,18 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section class="rounded-xl border border-zinc-200 bg-white p-4">
-        <label class="mb-2 block text-[13px] font-semibold text-zinc-900">
-          Ai có thể nhắn tin cho tôi
-        </label>
+      <section class="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+        <div class="mb-3 flex items-center gap-3">
+          <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1877f2]/10 text-[#1877f2]">
+            <i class="fa-solid fa-user-shield text-[13px]" />
+          </span>
+          <div class="min-w-0">
+            <p class="text-[13px] font-semibold text-zinc-900">
+              Ai có thể nhắn tin cho tôi
+            </p>
+            <p class="text-[12px] text-zinc-500">Áp dụng cho chat 1-1.</p>
+          </div>
+        </div>
         <a-select
           :value="messageRequestsFrom"
           class="w-full"
@@ -3403,14 +3803,11 @@ onUnmounted(() => {
           <a-select-option value="mutual_follow">Mutual follow</a-select-option>
           <a-select-option value="following">Chỉ người tôi follow</a-select-option>
         </a-select>
-        <p class="mt-2 text-[12px] leading-5 text-zinc-500">
-          Áp dụng cho chat 1-1 mới và gửi tin trong hội thoại 1-1 hiện có.
-        </p>
       </section>
 
       <NuxtLink
         to="/account?tab=privacy"
-        class="flex items-center justify-between rounded-xl border border-zinc-200 bg-white p-4 text-zinc-900 transition hover:border-[#1877f2]/35 hover:bg-zinc-50"
+        class="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white p-4 text-zinc-900 shadow-sm transition hover:border-[#1877f2]/35 hover:bg-zinc-50"
         @click="accountSettingsOpen = false"
       >
         <span class="flex items-center gap-3">
@@ -3435,6 +3832,16 @@ onUnmounted(() => {
     :default-avatar-url="defaultAvatarUrl"
     :add-member-candidates="addMemberCandidates"
     :add-members-loading="addMembersSubmitLoading"
+    :media-items="mediaPanelItems"
+    :media-loading="mediaPanelLoading"
+    :media-has-more="mediaPanelHasMore"
+    :file-items="filePanelItems"
+    :file-loading="filePanelLoading"
+    :file-has-more="filePanelHasMore"
+    :link-items="linkPanelItems"
+    :link-loading="linkPanelLoading"
+    :link-has-more="linkPanelHasMore"
+    :format-time="timeLabel"
     @save-name="onDrawerSaveGroupName"
     @pick-avatar-file="onDrawerGroupAvatarPicked"
     @leave="onLeaveGroupFromDrawer"
@@ -3443,6 +3850,57 @@ onUnmounted(() => {
     @add-members="onDrawerAddGroupMembers"
     @remove-member="onRemoveGroupMember"
     @open-user="openUserProfileById"
+    @pick-media="onGroupDrawerMediaPick"
+    @pick-file="onGroupDrawerMediaPick"
+    @pick-link="onGroupDrawerMediaPick"
+    @load-more-media="fetchConversationMedia({ append: true })"
+    @open-storage="openStorageDrawer"
+    @clear-history="confirmClearConversationHistory"
+  />
+  <ChatDirectDetailsDrawer
+    v-if="active && !active.isGroup"
+    v-model:open="directDetailsOpen"
+    :conversation="active"
+    :default-avatar-url="defaultAvatarUrl"
+    :media-items="mediaPanelItems"
+    :media-loading="mediaPanelLoading"
+    :media-has-more="mediaPanelHasMore"
+    :file-items="filePanelItems"
+    :file-loading="filePanelLoading"
+    :file-has-more="filePanelHasMore"
+    :link-items="linkPanelItems"
+    :link-loading="linkPanelLoading"
+    :link-has-more="linkPanelHasMore"
+    :format-time="timeLabel"
+    @open-profile="onDirectDrawerOpenProfile"
+    @pick-media="onGroupDrawerMediaPick"
+    @pick-file="onGroupDrawerMediaPick"
+    @pick-link="onGroupDrawerMediaPick"
+    @load-more-media="fetchConversationMedia({ append: true })"
+    @open-storage="openStorageDrawer"
+    @clear-history="confirmClearConversationHistory"
+  />
+  <ChatStorageDrawer
+    v-if="active"
+    v-model:open="storageDrawerOpen"
+    v-model:active-tab="storageDrawerTab"
+    :media-items="mediaPanelItems"
+    :media-loading="mediaPanelLoading"
+    :media-has-more="mediaPanelHasMore"
+    :file-items="filePanelItems"
+    :file-loading="filePanelLoading"
+    :file-has-more="filePanelHasMore"
+    :link-items="linkPanelItems"
+    :link-loading="linkPanelLoading"
+    :link-has-more="linkPanelHasMore"
+    :format-time="timeLabel"
+    :sender-label="storageSenderLabel"
+    @pick-media="onGroupDrawerMediaPick"
+    @pick-file="onGroupDrawerMediaPick"
+    @pick-link="onGroupDrawerMediaPick"
+    @load-more-media="fetchConversationMedia({ append: true })"
+    @load-more-files="fetchConversationFiles({ append: true })"
+    @load-more-links="fetchConversationLinks({ append: true })"
   />
 </template>
 

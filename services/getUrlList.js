@@ -205,6 +205,8 @@ export function getUrlList() {
       `${chatApi}/conversations/${enc(String(conversationId))}`,
     chatConversationNotification: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/notification`,
+    chatConversationClearHistory: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/clear-history`,
     chatConversationGroupPatch: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/group`,
     chatConversationGroupLeave: conversationId =>
@@ -252,6 +254,15 @@ export function getUrlList() {
     /** Query: q, chunkSize, cursor */
     chatConversationMessagesSearch: conversationId =>
       `${chatApi}/conversations/${enc(String(conversationId))}/messages/search`,
+    /** Query: chunkSize, cursor */
+    chatConversationMessagesMedia: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/messages/media`,
+    /** Query: chunkSize, cursor */
+    chatConversationMessagesFiles: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/messages/files`,
+    /** Query: chunkSize, cursor */
+    chatConversationMessagesLinks: conversationId =>
+      `${chatApi}/conversations/${enc(String(conversationId))}/messages/links`,
     chatConversationMessagesAround: (conversationId, messageId) =>
       `${chatApi}/conversations/${enc(String(conversationId))}/messages/around/${enc(String(messageId))}`,
     chatConversationMessageRecall: (conversationId, messageId) =>

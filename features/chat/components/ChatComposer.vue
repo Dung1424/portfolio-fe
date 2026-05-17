@@ -102,9 +102,9 @@ function openChatFilePicker() {
     >
     <form @submit.prevent="emit('submit')">
       <div
-        v-if="isGroup && messagingAllowed"
+        v-if="messagingAllowed"
         class="-mx-1 mb-2 flex items-center gap-1 overflow-x-auto border-y border-zinc-100 bg-zinc-50/90 px-1 py-1.5"
-        aria-label="Công cụ nhóm"
+        aria-label="Công cụ chat"
       >
         <button
           type="button"
@@ -134,6 +134,7 @@ function openChatFilePicker() {
           <i class="fa-solid fa-paperclip" />
         </button>
         <button
+          v-if="isGroup"
           type="button"
           class="group-tool-btn"
           title="Bình chọn"
@@ -152,6 +153,7 @@ function openChatFilePicker() {
           <i class="fa-regular fa-bell" />
         </button>
         <button
+          v-if="isGroup"
           type="button"
           class="group-tool-btn"
           title="Ghi chú"
@@ -276,36 +278,6 @@ function openChatFilePicker() {
       <div
         class="composer-bar flex min-h-[48px] items-center gap-1.5 rounded-full border border-zinc-200/90 bg-[#f0f2f5] py-1.5 pl-2.5 pr-2 transition focus-within:border-[#1877f2]/35 focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(24,119,242,0.12)]"
       >
-        <button
-          v-if="!isGroup"
-          type="button"
-          class="composer-icon-btn flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/80 hover:text-[#1877f2]"
-          aria-label="Attach photo"
-          :disabled="!messagingAllowed"
-          @click="openChatImagePicker"
-        >
-          <i class="fa-solid fa-plus text-[18px] leading-none" />
-        </button>
-        <button
-          v-if="!isGroup"
-          type="button"
-          class="composer-icon-btn flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/80 hover:text-[#1877f2]"
-          aria-label="Attach file"
-          :disabled="!messagingAllowed"
-          @click="openChatFilePicker"
-        >
-          <i class="fa-solid fa-paperclip text-[16px] leading-none" />
-        </button>
-        <button
-          v-if="!isGroup"
-          type="button"
-          class="composer-icon-btn flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/80 hover:text-[#1877f2]"
-          aria-label="Open sticker picker"
-          :disabled="!messagingAllowed"
-          @click="emit('toggle-sticker-picker')"
-        >
-          <i class="fa-regular fa-face-smile text-[18px] leading-none" />
-        </button>
         <textarea
           v-model="draftModel"
           rows="1"
