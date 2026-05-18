@@ -479,6 +479,7 @@ const isChatActive = computed(() => route.name === 'Chat')
 const isContactActive = computed(() => route.name === 'Contact')
 const isBlogActive = computed(() => route.name === 'Blog' || route.name === 'BlogDetails')
 const isCategoryActive = computed(() => route.name === 'Category' || route.name === 'DetailsCategory')
+const isQuestActive = computed(() => String(route.path || '').startsWith('/quests'))
 
 watch(
   () => route.query.type,
@@ -772,6 +773,9 @@ watch(isLoggedIn, async (loggedIn) => {
           </NuxtLink>
           <NuxtLink :to="{ name: 'Category' }" class="rounded-md px-2 py-1.5 text-[15px]" :class="navLinkClass(isCategoryActive)">
             Category
+          </NuxtLink>
+          <NuxtLink to="/quests" class="rounded-md px-2 py-1.5 text-[15px]" :class="navLinkClass(isQuestActive)">
+            Quests
           </NuxtLink>
         </nav>
       </div>
@@ -1083,6 +1087,9 @@ watch(isLoggedIn, async (loggedIn) => {
         </NuxtLink>
         <NuxtLink :to="{ name: 'Category' }" class="rounded-lg px-3 py-2" :class="isCategoryActive ? 'bg-sky-100 font-bold text-zinc-900' : 'text-zinc-700'" @click="mobileNavOpen = false">
           Category
+        </NuxtLink>
+        <NuxtLink to="/quests" class="rounded-lg px-3 py-2" :class="isQuestActive ? 'bg-sky-100 font-bold text-zinc-900' : 'text-zinc-700'" @click="mobileNavOpen = false">
+          Quests
         </NuxtLink>
         <NuxtLink
           v-if="isLoggedIn"

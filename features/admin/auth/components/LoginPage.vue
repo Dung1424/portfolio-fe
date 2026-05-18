@@ -92,7 +92,7 @@ onMounted(() => {
   admin.hydrateFromStorage()
   if (admin.isLoggedIn) {
     const r = route.query.redirect
-    navigateTo(typeof r === 'string' && r.startsWith('/admin') ? r : '/admin')
+    navigateTo(adminRedirectPath(r))
   }
 })
 
@@ -102,7 +102,7 @@ async function onSubmit() {
     await admin.login(formState.email, formState.password)
     message.success('Signed in')
     const r = route.query.redirect
-    await navigateTo(typeof r === 'string' && r.startsWith('/admin') ? r : '/admin')
+    await navigateTo(adminRedirectPath(r))
   } catch (err) {
     const status = err?.response?.status
     const data = err?.response?.data
@@ -116,5 +116,12 @@ async function onSubmit() {
   } finally {
     loading.value = false
   }
+}
+
+function adminRedirectPath(value) {
+  if (typeof value === 'string' && value.startsWith('/admin')) {
+    return value
+  }
+  return '/admin'
 }
 </script>
