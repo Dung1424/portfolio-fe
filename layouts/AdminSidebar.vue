@@ -161,6 +161,17 @@ const navEntries = [
   },
   {
     kind: 'expandable',
+    key: 'quests',
+    label: 'Quests',
+    icon: 'fa-trophy',
+    items: [
+      { to: '/admin/quests', icon: 'fa-trophy', label: 'Quest setup' },
+      { to: '/admin/store', icon: 'fa-store', label: 'Store items' },
+      { to: '/admin/redemptions', icon: 'fa-gift', label: 'Redemptions' }
+    ]
+  },
+  {
+    kind: 'expandable',
     key: 'reports',
     label: 'Reports',
     icon: 'fa-flag',
@@ -177,7 +188,8 @@ const navEntries = [
     icon: 'fa-users',
     items: [
       { to: '/admin/users', icon: 'fa-users', label: 'Active users' },
-      { to: '/admin/users/inactive', icon: 'fa-user-slash', label: 'Inactive users' }
+      { to: '/admin/users/inactive', icon: 'fa-user-slash', label: 'Inactive users' },
+      { to: '/admin/staff', icon: 'fa-user-shield', label: 'Staff accounts' }
     ]
   },
   {

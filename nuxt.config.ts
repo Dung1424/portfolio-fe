@@ -88,11 +88,15 @@ export default defineNuxtConfig({
     '/addPhotos': { ssr: false },
     '/changePassword': { ssr: false },
     '/like': { ssr: false },
+    '/quests/**': { ssr: false },
+    '/wallet': { ssr: false },
+    '/store': { ssr: false },
     '/chat': { ssr: false },
     '/listUserBlock': { ssr: false },
     '/galleryDetails/**': { ssr: false },
     '/admin': { ssr: false },
-    '/admin/**': { ssr: false }
+    '/admin/**': { ssr: false },
+    '/editor/**': { ssr: false }
   },
 
   compatibilityDate: '2025-01-15',

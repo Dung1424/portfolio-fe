@@ -77,6 +77,12 @@ export function getAdminPaths() {
     userPhotos: id => `/User/Photos/${id}`,
     userGalleries: id => `/User/Galleries/${id}`,
     galleryPhotos: id => `/Gallery/Photos/${id}`,
+    staff: '/Staff/List',
+    createStaff: '/Staff/Create',
+    updateStaff: id => `/Staff/Update/${id}`,
+    resetStaffPassword: id => `/Staff/ResetPassword/${id}`,
+    lockStaff: id => `/Staff/Lock/${id}`,
+    unlockStaff: id => `/Staff/Unlock/${id}`,
     profile: '/Account/GetProfile',
     updateProfile: '/Account/UpdateProfile',
     changePassword: '/Account/UpdatePassword',
@@ -86,7 +92,37 @@ export function getAdminPaths() {
     blog: id => `/Blog/Detail/${id}`,
     createBlog: '/Blog/Create',
     updateBlog: id => `/Blog/Update/${id}`,
-    deleteBlog: id => `/Blog/Delete/${id}`
+    deleteBlog: id => `/Blog/Delete/${id}`,
+    quests: '/Quest/List',
+    quest: id => `/Quest/Detail/${id}`,
+    createQuest: '/Quest/Create',
+    updateQuest: id => `/Quest/Update/${id}`,
+    updateQuestStatus: id => `/Quest/UpdateStatus/${id}`,
+    finalizeQuest: id => `/Quest/Finalize/${id}`,
+    submissions: '/Submission/List',
+    approveSubmission: id => `/Submission/Approve/${id}`,
+    rejectSubmission: id => `/Submission/Reject/${id}`,
+    shortlistSubmission: id => `/Submission/Shortlist/${id}`,
+    storeItems: '/StoreItem/List',
+    createStoreItem: '/StoreItem/Create',
+    updateStoreItem: id => `/StoreItem/Update/${id}`,
+    redemptions: '/Redemption/List',
+    updateRedemptionStatus: id => `/Redemption/UpdateStatus/${id}`
+  }
+}
+
+export function getEditorPaths() {
+  const raw = import.meta.env?.NUXT_PUBLIC_API_BASE || 'http://localhost:8088'
+  const base = String(raw).replace(/\/$/, '')
+  const root = `${base}/api/v1/editor`
+  return {
+    root,
+    login: '/Login',
+    logout: '/Logout',
+    submissions: '/Submission/List',
+    approveSubmission: id => `/Submission/Approve/${id}`,
+    rejectSubmission: id => `/Submission/Reject/${id}`,
+    shortlistSubmission: id => `/Submission/Shortlist/${id}`
   }
 }
 
@@ -188,6 +224,16 @@ export function getUrlList() {
     getLatestBlogs: `${baseUrl}/Blog/ListLatest`,
     getOlderBlogs: `${baseUrl}/Blog/ListOlder`,
     getBlogDetails: slug => `${baseUrl}/Blog/Detail/${enc(slug)}`,
+
+    // quest, wallet, store
+    quests: `${baseUrl}/Quest/List`,
+    quest: id => `${baseUrl}/Quest/Detail/${enc(String(id))}`,
+    submitQuest: questId => `${baseUrl}/Quest/${enc(String(questId))}/Submission/Create`,
+    wallet: `${baseUrl}/Wallet/Get`,
+    convertStars: `${baseUrl}/Wallet/ConvertStars`,
+    storeItems: `${baseUrl}/Store/List`,
+    redeemStoreItem: itemId => `${baseUrl}/Store/Redeem/${enc(String(itemId))}`,
+    juryReview: submissionId => `${baseUrl}/Jury/Submission/${enc(String(submissionId))}/Review`,
 
     // chat (Node + Mongo) — Bearer JWT; GET /health không cần Bearer
     /** Gốc `http://host:port` — socket.io-client kết nối tới đây */
