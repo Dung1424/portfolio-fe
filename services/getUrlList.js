@@ -83,6 +83,8 @@ export function getAdminPaths() {
     resetStaffPassword: id => `/Staff/ResetPassword/${id}`,
     lockStaff: id => `/Staff/Lock/${id}`,
     unlockStaff: id => `/Staff/Unlock/${id}`,
+    permissions: '/Staff/Permissions',
+    staffPermissions: id => `/Staff/${id}/Permissions`,
     profile: '/Account/GetProfile',
     updateProfile: '/Account/UpdateProfile',
     changePassword: '/Account/UpdatePassword',
@@ -108,21 +110,6 @@ export function getAdminPaths() {
     updateStoreItem: id => `/StoreItem/Update/${id}`,
     redemptions: '/Redemption/List',
     updateRedemptionStatus: id => `/Redemption/UpdateStatus/${id}`
-  }
-}
-
-export function getEditorPaths() {
-  const raw = import.meta.env?.NUXT_PUBLIC_API_BASE || 'http://localhost:8088'
-  const base = String(raw).replace(/\/$/, '')
-  const root = `${base}/api/v1/editor`
-  return {
-    root,
-    login: '/Login',
-    logout: '/Logout',
-    submissions: '/Submission/List',
-    approveSubmission: id => `/Submission/Approve/${id}`,
-    rejectSubmission: id => `/Submission/Reject/${id}`,
-    shortlistSubmission: id => `/Submission/Shortlist/${id}`
   }
 }
 
@@ -233,6 +220,7 @@ export function getUrlList() {
     convertStars: `${baseUrl}/Wallet/ConvertStars`,
     storeItems: `${baseUrl}/Store/List`,
     redeemStoreItem: itemId => `${baseUrl}/Store/Redeem/${enc(String(itemId))}`,
+    jurySubmissions: `${baseUrl}/Jury/Submission/List`,
     juryReview: submissionId => `${baseUrl}/Jury/Submission/${enc(String(submissionId))}/Review`,
 
     // chat (Node + Mongo) — Bearer JWT; GET /health không cần Bearer

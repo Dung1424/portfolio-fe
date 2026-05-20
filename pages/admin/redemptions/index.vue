@@ -4,6 +4,7 @@ import RedemptionsAdminPage from '~/features/admin/store/components/RedemptionsA
 definePageMeta({
   layout: 'admin',
   middleware: ['admin-auth'],
+  permission: 'VIEW_REDEMPTION',
   title: 'Redemptions'
 })
 </script>

@@ -95,8 +95,7 @@ export default defineNuxtConfig({
     '/listUserBlock': { ssr: false },
     '/galleryDetails/**': { ssr: false },
     '/admin': { ssr: false },
-    '/admin/**': { ssr: false },
-    '/editor/**': { ssr: false }
+    '/admin/**': { ssr: false }
   },
 
   compatibilityDate: '2025-01-15',

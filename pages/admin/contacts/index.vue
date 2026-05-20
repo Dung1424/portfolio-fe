@@ -3,6 +3,7 @@ import AdminPage from '~/features/admin/contacts/components/ContactsListPage.vue
 definePageMeta({
   layout: 'admin',
   middleware: ['admin-auth'],
+  permission: 'VIEW_CONTACT',
   title: 'Contacts'
 })
 </script>

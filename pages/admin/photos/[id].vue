@@ -5,6 +5,7 @@ import { navigateTo, useRoute } from '#app'
 definePageMeta({
   layout: 'admin',
   middleware: ['admin-auth'],
+  permission: 'VIEW_DETAIL_PHOTO',
   title: 'Photo'
 })
 

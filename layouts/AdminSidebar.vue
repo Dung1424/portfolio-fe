@@ -122,7 +122,8 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useAdminAuthStore } from '~/stores/adminAuthStore.js'
 
 defineOptions({ name: 'AdminSidebar' })
 
@@ -131,12 +132,13 @@ const COLLAPSED_KEY = 'admin-sidebar-collapsed'
 const route = useRoute()
 const collapsed = ref(false)
 
-const navEntries = [
+const rawNavEntries = [
   {
     kind: 'link',
     to: '/admin',
     icon: 'fa-gauge-high',
-    label: 'Dashboard'
+    label: 'Dashboard',
+    permissions: ['VIEW_DASHBOARD']
   },
   {
     kind: 'expandable',
@@ -144,9 +146,9 @@ const navEntries = [
     label: 'Photos',
     icon: 'fa-images',
     items: [
-      { to: '/admin/photos', icon: 'fa-images', label: 'All photos' },
-      { to: '/admin/photos/pending', icon: 'fa-clock', label: 'Pending' },
-      { to: '/admin/photos/rejected', icon: 'fa-circle-xmark', label: 'Rejected' }
+      { to: '/admin/photos', icon: 'fa-images', label: 'All photos', permissions: ['VIEW_LIST_PHOTO'] },
+      { to: '/admin/photos/pending', icon: 'fa-clock', label: 'Pending', permissions: ['VIEW_PENDING_PHOTO'] },
+      { to: '/admin/photos/rejected', icon: 'fa-circle-xmark', label: 'Rejected', permissions: ['VIEW_REJECTED_PHOTO'] }
     ]
   },
   {
@@ -155,8 +157,8 @@ const navEntries = [
     label: 'Catalog',
     icon: 'fa-layer-group',
     items: [
-      { to: '/admin/categories', icon: 'fa-layer-group', label: 'Categories' },
-      { to: '/admin/tags', icon: 'fa-tags', label: 'Tags' }
+      { to: '/admin/categories', icon: 'fa-layer-group', label: 'Categories', permissions: ['VIEW_CATEGORY'] },
+      { to: '/admin/tags', icon: 'fa-tags', label: 'Tags', permissions: ['VIEW_TAG'] }
     ]
   },
   {
@@ -165,9 +167,10 @@ const navEntries = [
     label: 'Quests',
     icon: 'fa-trophy',
     items: [
-      { to: '/admin/quests', icon: 'fa-trophy', label: 'Quest setup' },
-      { to: '/admin/store', icon: 'fa-store', label: 'Store items' },
-      { to: '/admin/redemptions', icon: 'fa-gift', label: 'Redemptions' }
+      { to: '/admin/quests', icon: 'fa-trophy', label: 'Quest setup', permissions: ['VIEW_QUEST'] },
+      { to: '/admin/submissions', icon: 'fa-images', label: 'Submissions', permissions: ['VIEW_QUEST'] },
+      { to: '/admin/store', icon: 'fa-store', label: 'Store items', permissions: ['MANAGE_STORE_ITEM'] },
+      { to: '/admin/redemptions', icon: 'fa-gift', label: 'Redemptions', permissions: ['VIEW_REDEMPTION'] }
     ]
   },
   {
@@ -176,9 +179,9 @@ const navEntries = [
     label: 'Reports',
     icon: 'fa-flag',
     items: [
-      { to: '/admin/reports/photos', icon: 'fa-flag', label: 'Photo reports' },
-      { to: '/admin/reports/comments', icon: 'fa-comments', label: 'Comment reports' },
-      { to: '/admin/reports/galleries', icon: 'fa-image', label: 'Gallery reports' }
+      { to: '/admin/reports/photos', icon: 'fa-flag', label: 'Photo reports', permissions: ['VIEW_PHOTO_REPORT'] },
+      { to: '/admin/reports/comments', icon: 'fa-comments', label: 'Comment reports', permissions: ['VIEW_COMMENT_REPORT'] },
+      { to: '/admin/reports/galleries', icon: 'fa-image', label: 'Gallery reports', permissions: ['VIEW_GALLERY_REPORT'] }
     ]
   },
   {
@@ -187,9 +190,9 @@ const navEntries = [
     label: 'Users',
     icon: 'fa-users',
     items: [
-      { to: '/admin/users', icon: 'fa-users', label: 'Active users' },
-      { to: '/admin/users/inactive', icon: 'fa-user-slash', label: 'Inactive users' },
-      { to: '/admin/staff', icon: 'fa-user-shield', label: 'Staff accounts' }
+      { to: '/admin/users', icon: 'fa-users', label: 'Active users', permissions: ['VIEW_ACTIVE_USER'] },
+      { to: '/admin/users/inactive', icon: 'fa-user-slash', label: 'Inactive users', permissions: ['VIEW_INACTIVE_USER'] },
+      { to: '/admin/staff', icon: 'fa-user-shield', label: 'Staff accounts', permissions: ['MANAGE_STAFF_ACCOUNT'] }
     ]
   },
   {
@@ -198,8 +201,8 @@ const navEntries = [
     label: 'Content',
     icon: 'fa-folder-open',
     items: [
-      { to: '/admin/contacts', icon: 'fa-envelope-open-text', label: 'Contacts' },
-      { to: '/admin/blogs', icon: 'fa-newspaper', label: 'Blogs' }
+      { to: '/admin/contacts', icon: 'fa-envelope-open-text', label: 'Contacts', permissions: ['VIEW_CONTACT'] },
+      { to: '/admin/blogs', icon: 'fa-newspaper', label: 'Blogs', permissions: ['VIEW_BLOG'] }
     ]
   },
   {
@@ -208,11 +211,30 @@ const navEntries = [
     label: 'Account',
     icon: 'fa-user-gear',
     items: [
-      { to: '/admin/account/profile', icon: 'fa-user-gear', label: 'Profile' },
-      { to: '/admin/account/password', icon: 'fa-key', label: 'Password' }
+      { to: '/admin/account/profile', icon: 'fa-user-gear', label: 'Profile', permissions: ['VIEW_ADMIN_PROFILE'] },
+      { to: '/admin/account/password', icon: 'fa-key', label: 'Password', permissions: ['CHANGE_ADMIN_PASSWORD'] }
     ]
   }
 ]
+
+const admin = useAdminAuthStore()
+admin.hydrateFromStorage()
+
+function canSee(entry) {
+  const permissions = entry.permissions || []
+  return !permissions.length || admin.hasAnyPermission(permissions)
+}
+
+const navEntries = computed(() => rawNavEntries
+  .map(entry => {
+    if (entry.kind !== 'expandable') {
+      return canSee(entry) ? entry : null
+    }
+    const items = entry.items.filter(canSee)
+    return items.length ? { ...entry, items } : null
+  })
+  .filter(Boolean)
+)
 
 function entryKey(entry) {
   if (entry.kind === 'expandable') {
@@ -236,7 +258,7 @@ function isGroupActive(entry) {
 function buildOpenState() {
   const state = {}
   const p = route.path
-  for (const e of navEntries) {
+  for (const e of navEntries.value) {
     if (e.kind !== 'expandable') {
       continue
     }
@@ -257,7 +279,7 @@ function toggleGroup(key) {
 
 function syncOpenGroupsFromRoute() {
   const p = route.path
-  for (const e of navEntries) {
+  for (const e of navEntries.value) {
     if (e.kind !== 'expandable') {
       continue
     }

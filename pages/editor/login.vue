@@ -1,12 +1,7 @@
 <script setup>
-import LoginPage from '~/features/editor/components/LoginPage.vue'
-
-definePageMeta({
-  layout: false,
-  name: 'EditorLogin'
-})
+await navigateTo('/admin/login', { replace: true })
 </script>
 
 <template>
-  <LoginPage />
+  <div />
 </template>

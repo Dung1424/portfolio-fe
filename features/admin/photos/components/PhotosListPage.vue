@@ -45,10 +45,14 @@
 
     <a-card title="Approved photos">
       <div class="admin-toolbar">
-        <a-button type="primary" size="large" class="!h-10 !rounded-lg !px-5 !font-semibold" @click="createOpen = true">
-          <i class="fa-solid fa-plus mr-2 opacity-90" aria-hidden="true" />
-          Add photo
-        </a-button>
+        <a-tooltip :title="admin.permissionTitle('CREATE_PHOTO')">
+          <span>
+            <a-button type="primary" size="large" class="!h-10 !rounded-lg !px-5 !font-semibold" :disabled="!admin.hasPermission('CREATE_PHOTO')" @click="openCreatePhoto">
+              <i class="fa-solid fa-plus mr-2 opacity-90" aria-hidden="true" />
+              Add photo
+            </a-button>
+          </span>
+        </a-tooltip>
       </div>
       <a-spin :spinning="loading">
         <a-table
@@ -130,12 +134,20 @@
             </template>
             <template v-if="column.key === 'action'">
               <a-space size="small">
-                <a-button type="text" class="admin-table-icon-btn" title="Edit" @click="openPhotoModal(record.id)">
-                  <i class="fa-solid fa-pen-to-square" aria-hidden="true" />
-                </a-button>
-                <a-button type="text" danger class="admin-table-icon-btn" title="Delete" @click="confirmDeletePhoto(record)">
-                  <i class="fa-solid fa-trash-can" aria-hidden="true" />
-                </a-button>
+                <a-tooltip :title="admin.permissionTitle('UPDATE_PHOTO')">
+                  <span>
+                    <a-button type="text" class="admin-table-icon-btn" title="Edit" :disabled="!admin.hasPermission('UPDATE_PHOTO')" @click="openPhotoModal(record.id)">
+                      <i class="fa-solid fa-pen-to-square" aria-hidden="true" />
+                    </a-button>
+                  </span>
+                </a-tooltip>
+                <a-tooltip :title="admin.permissionTitle('DELETE_PHOTO')">
+                  <span>
+                    <a-button type="text" danger class="admin-table-icon-btn" title="Delete" :disabled="!admin.hasPermission('DELETE_PHOTO')" @click="confirmDeletePhoto(record)">
+                      <i class="fa-solid fa-trash-can" aria-hidden="true" />
+                    </a-button>
+                  </span>
+                </a-tooltip>
               </a-space>
             </template>
           </template>
@@ -262,11 +274,13 @@ import {
 } from '~/composables/adminCursorListPresets'
 import PhotoEditPanel from '~/features/admin/photos/components/PhotoEditPanel.vue'
 import { privacyLabel, privacyBadgeClass, photoStatusBadgeClass } from '~/composables/photoAdminBadges'
+import { useAdminAuthStore } from '~/stores/adminAuthStore.js'
 
 const route = useRoute()
 const router = useRouter()
 const runtimeConfig = useRuntimeConfig()
 const { showFromError } = useApiErrorMessage()
+const admin = useAdminAuthStore()
 
 const categories = ref([])
 const modalCategories = ref([])
@@ -383,7 +397,19 @@ const photoModalOpen = ref(false)
 const photoModalId = ref(null)
 const photoModalTitle = computed(() => (photoModalId.value ? 'Photo details' : ''))
 
+function openCreatePhoto() {
+  if (!admin.hasPermission('CREATE_PHOTO')) {
+    notification.warning({ message: admin.permissionTitle('CREATE_PHOTO') })
+    return
+  }
+  createOpen.value = true
+}
+
 function openPhotoModal(id) {
+  if (!admin.hasPermission('UPDATE_PHOTO')) {
+    notification.warning({ message: admin.permissionTitle('UPDATE_PHOTO') })
+    return
+  }
   photoModalId.value = id
   photoModalOpen.value = true
 }
@@ -403,6 +429,10 @@ function onPhotoModalUpdated() {
 }
 
 async function confirmDeletePhoto(record) {
+  if (!admin.hasPermission('DELETE_PHOTO')) {
+    notification.warning({ message: admin.permissionTitle('DELETE_PHOTO') })
+    return
+  }
   const ok = await adminConfirm({
     title: 'Delete this photo?',
     content: 'This cannot be undone.',
@@ -498,6 +528,10 @@ watch(createOpen, (open) => {
 })
 
 async function submitCreate() {
+  if (!admin.hasPermission('CREATE_PHOTO')) {
+    notification.warning({ message: admin.permissionTitle('CREATE_PHOTO') })
+    return
+  }
   if (!createFile.value) {
     notification.error({
       message: 'Error',
