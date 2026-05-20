@@ -27,5 +27,6 @@ export const questApi = {
   convertStars: stars => questHttp.post(getUrlList().convertStars, { stars }),
   storeItems: query => questHttp.get(getUrlList().storeItems, { params: query }),
   redeem: itemId => questHttp.post(getUrlList().redeemStoreItem(itemId)),
+  jurySubmissions: query => questHttp.get(getUrlList().jurySubmissions, { params: query }),
   review: (submissionId, payload) => questHttp.post(getUrlList().juryReview(submissionId), payload)
 }

@@ -124,27 +124,35 @@
             </template>
             <template v-else-if="column.key === 'action'">
               <a-space v-if="listMode === 'pending'" size="small">
-                <a-button
-                  type="text"
-                  class="admin-table-icon-btn !text-emerald-600 hover:!text-emerald-700"
-                  title="Duyệt"
-                  :loading="statusPatchingId === record.id"
-                  :disabled="statusPatchingId != null && statusPatchingId !== record.id"
-                  @click="applyPhotoStatus(record, 'approved')"
-                >
-                  <i class="fa-solid fa-circle-check text-base" aria-hidden="true" />
-                </a-button>
-                <a-button
-                  type="text"
-                  danger
-                  class="admin-table-icon-btn"
-                  title="Từ chối"
-                  :loading="statusPatchingId === record.id"
-                  :disabled="statusPatchingId != null && statusPatchingId !== record.id"
-                  @click="applyPhotoStatus(record, 'rejected')"
-                >
-                  <i class="fa-solid fa-circle-xmark text-base" aria-hidden="true" />
-                </a-button>
+                <a-tooltip :title="photoActionTooltip('APPROVE_PHOTO')">
+                  <span>
+                    <a-button
+                      type="text"
+                      class="admin-table-icon-btn !text-emerald-600 hover:!text-emerald-700"
+                      title="Duyệt"
+                      :loading="statusPatchingId === record.id"
+                      :disabled="!canPatchPhoto('APPROVE_PHOTO', record)"
+                      @click="applyPhotoStatus(record, 'approved')"
+                    >
+                      <i class="fa-solid fa-circle-check text-base" aria-hidden="true" />
+                    </a-button>
+                  </span>
+                </a-tooltip>
+                <a-tooltip :title="photoActionTooltip('REJECT_PHOTO')">
+                  <span>
+                    <a-button
+                      type="text"
+                      danger
+                      class="admin-table-icon-btn"
+                      title="Từ chối"
+                      :loading="statusPatchingId === record.id"
+                      :disabled="!canPatchPhoto('REJECT_PHOTO', record)"
+                      @click="applyPhotoStatus(record, 'rejected')"
+                    >
+                      <i class="fa-solid fa-circle-xmark text-base" aria-hidden="true" />
+                    </a-button>
+                  </span>
+                </a-tooltip>
               </a-space>
               <a-button
                 v-else-if="listMode === 'rejected'"
@@ -199,6 +207,7 @@ import {
 } from '~/composables/adminCursorListPresets'
 import PhotoViewPanel from '~/features/admin/photos/components/PhotoViewPanel.vue'
 import { privacyLabel, privacyBadgeClass, photoStatusBadgeClass } from '~/composables/photoAdminBadges'
+import { useAdminAuthStore } from '~/stores/adminAuthStore.js'
 
 const props = defineProps({
   listMode: {
@@ -210,6 +219,7 @@ const props = defineProps({
 
 const runtimeConfig = useRuntimeConfig()
 const { showFromError } = useApiErrorMessage()
+const admin = useAdminAuthStore()
 
 const cardTitle = computed(() =>
   props.listMode === 'pending' ? 'Pending photos' : 'Rejected photos'
@@ -335,6 +345,11 @@ async function loadFilterCategories() {
 }
 
 async function applyPhotoStatus(record, status) {
+  const permission = status === 'approved' ? 'APPROVE_PHOTO' : 'REJECT_PHOTO'
+  if (!canPatchPhoto(permission, record)) {
+    notification.warning({ message: photoActionTooltip(permission) || 'Không thể thao tác' })
+    return
+  }
   const id = record?.id
   if (!id || statusPatchingId.value) {
     return
@@ -355,6 +370,14 @@ async function applyPhotoStatus(record, status) {
   } finally {
     statusPatchingId.value = null
   }
+}
+
+function canPatchPhoto(permission, record) {
+  return admin.hasPermission(permission) && !(statusPatchingId.value != null && statusPatchingId.value !== record.id)
+}
+
+function photoActionTooltip(permission) {
+  return admin.permissionTitle(permission)
 }
 
 onMounted(() => {

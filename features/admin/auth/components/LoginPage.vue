@@ -17,10 +17,10 @@
           Portfolio
         </p>
         <h1 class="mt-2 text-2xl font-bold tracking-tight text-portfolio-ink sm:text-3xl font-[family-name:var(--font-portfolio-heading)]">
-          Admin sign in
+          Staff sign in
         </h1>
         <p class="mt-2 text-sm text-slate-500">
-          Sign in to manage photos, users, and content.
+          Sign in to manage the workspace based on your permissions.
         </p>
       </div>
 
@@ -109,7 +109,7 @@ async function onSubmit() {
     if (status === 403) {
       message.error(typeof data?.message === 'string' ? data.message : (typeof data?.error === 'string' ? data.error : 'Account locked.'))
     } else if (status === 401) {
-      message.error(typeof data?.message === 'string' ? data.message : (typeof data?.error === 'string' ? data.error : 'Invalid credentials or not an admin.'))
+      message.error(typeof data?.message === 'string' ? data.message : (typeof data?.error === 'string' ? data.error : 'Invalid credentials or no staff access.'))
     } else {
       showFromError(err, 'Login failed.')
     }
@@ -122,6 +122,6 @@ function adminRedirectPath(value) {
   if (typeof value === 'string' && value.startsWith('/admin')) {
     return value
   }
-  return '/admin'
+  return admin.defaultPath()
 }
 </script>

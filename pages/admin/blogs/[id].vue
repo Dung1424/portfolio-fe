@@ -5,6 +5,7 @@ import { navigateTo } from '#app'
 definePageMeta({
   layout: 'admin',
   middleware: ['admin-auth'],
+  permission: 'UPDATE_BLOG',
   title: 'Edit blog'
 })
 

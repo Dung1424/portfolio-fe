@@ -15,4 +15,16 @@ export default defineNuxtRouteMiddleware((to) => {
       query: { redirect: to.fullPath }
     })
   }
+  const permission = to.meta.permission
+  if (typeof permission === 'string' && !admin.hasPermission(permission)) {
+    if (to.path !== '/admin/no-permission') {
+      return navigateTo({
+        path: '/admin/no-permission',
+        query: {
+          permission,
+          from: to.fullPath
+        }
+      })
+    }
+  }
 })

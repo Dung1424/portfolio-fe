@@ -3,6 +3,7 @@ import AdminPage from '~/features/admin/categories/components/CategoriesListPage
 definePageMeta({
   layout: 'admin',
   middleware: ['admin-auth'],
+  permission: 'VIEW_CATEGORY',
   title: 'Categories'
 })
 </script>

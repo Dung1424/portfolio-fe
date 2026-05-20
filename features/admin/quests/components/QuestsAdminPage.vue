@@ -5,10 +5,14 @@
         <a-select v-model:value="filters.status" allow-clear placeholder="Status" class="w-40" @change="fetchQuests">
           <a-select-option v-for="s in questStatuses" :key="s" :value="s">{{ s }}</a-select-option>
         </a-select>
-        <a-button type="primary" class="!h-10 !rounded-lg !px-5 !font-semibold" @click="openCreate">
-          <i class="fa-solid fa-plus mr-2" aria-hidden="true" />
-          New quest
-        </a-button>
+        <a-tooltip :title="admin.permissionTitle('CREATE_QUEST')">
+          <span>
+            <a-button type="primary" class="!h-10 !rounded-lg !px-5 !font-semibold" :disabled="!admin.hasPermission('CREATE_QUEST')" @click="openCreate">
+              <i class="fa-solid fa-plus mr-2" aria-hidden="true" />
+              New quest
+            </a-button>
+          </span>
+        </a-tooltip>
       </div>
       <a-spin :spinning="loading">
         <a-table :columns="columns" :data-source="rows" row-key="id" :pagination="pagination" :scroll="{ x: 1100 }" @change="onTableChange">
@@ -44,9 +48,13 @@
                 <a-button type="text" class="admin-table-icon-btn" title="View details" @click="openDetail(record)">
                   <i class="fa-solid fa-eye" aria-hidden="true" />
                 </a-button>
-                <a-button type="text" class="admin-table-icon-btn" title="Edit" :disabled="record.status !== 'draft'" @click="openEdit(record)">
-                  <i class="fa-solid fa-pen-to-square" aria-hidden="true" />
-                </a-button>
+                <a-tooltip :title="editTooltip(record)">
+                  <span>
+                    <a-button type="text" class="admin-table-icon-btn" title="Edit" :disabled="!canEditQuest(record)" @click="openEdit(record)">
+                      <i class="fa-solid fa-pen-to-square" aria-hidden="true" />
+                    </a-button>
+                  </span>
+                </a-tooltip>
               </a-space>
             </template>
           </template>
@@ -102,10 +110,14 @@
               <h3 class="text-sm font-semibold text-slate-900">Rank rewards</h3>
               <p class="mt-1 text-xs text-slate-500">Set reward ranges without editing JSON.</p>
             </div>
-            <a-button type="primary" ghost class="!rounded-lg" @click="addRankReward">
-              <i class="fa-solid fa-plus mr-2" aria-hidden="true" />
-              Add range
-            </a-button>
+            <a-tooltip :title="formPermissionTooltip">
+              <span>
+                <a-button type="primary" ghost class="!rounded-lg" :disabled="!canSaveCurrentQuest" @click="addRankReward">
+                  <i class="fa-solid fa-plus mr-2" aria-hidden="true" />
+                  Add range
+                </a-button>
+              </span>
+            </a-tooltip>
           </div>
           <div class="space-y-3">
             <div
@@ -126,23 +138,31 @@
                 <a-input-number v-model:value="row.star" :min="0" class="!w-full" />
               </a-form-item>
               <div class="flex items-end justify-end">
-                <a-button
-                  danger
-                  type="text"
-                  class="admin-table-icon-btn"
-                  title="Remove range"
-                  :disabled="form.rankRewards.length === 1"
-                  @click="removeRankReward(index)"
-                >
-                  <i class="fa-solid fa-trash-can" aria-hidden="true" />
-                </a-button>
+                <a-tooltip :title="form.rankRewards.length === 1 ? 'Cần ít nhất một khoảng rank' : formPermissionTooltip">
+                  <span>
+                    <a-button
+                      danger
+                      type="text"
+                      class="admin-table-icon-btn"
+                      title="Remove range"
+                      :disabled="form.rankRewards.length === 1 || !canSaveCurrentQuest"
+                      @click="removeRankReward(index)"
+                    >
+                      <i class="fa-solid fa-trash-can" aria-hidden="true" />
+                    </a-button>
+                  </span>
+                </a-tooltip>
               </div>
             </div>
           </div>
         </div>
         <div class="flex justify-end gap-3 border-t border-slate-100 pt-4">
           <a-button @click="formOpen = false">Cancel</a-button>
-          <a-button type="primary" html-type="submit" :loading="saving">Save quest</a-button>
+          <a-tooltip :title="formPermissionTooltip">
+            <span>
+              <a-button type="primary" html-type="submit" :loading="saving" :disabled="!canSaveCurrentQuest">Save quest</a-button>
+            </span>
+          </a-tooltip>
         </div>
       </a-form>
     </AdminModal>
@@ -241,8 +261,10 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { notification } from 'ant-design-vue'
 import { questsAdminApi } from '~/features/admin/quests/services/quests.api.js'
 import { getErrorMessage } from '~/services/apiEnvelope.js'
+import { useAdminAuthStore } from '~/stores/adminAuthStore.js'
 
 const questStatuses = ['draft', 'open', 'judging', 'completed']
+const admin = useAdminAuthStore()
 const defaultRanks = [
   { from: 1, to: 1, rewards: { coin: 1000, star: 100 } },
   { from: 2, to: 2, rewards: { coin: 700, star: 80 } },
@@ -262,6 +284,9 @@ const detailRecord = ref(null)
 const editingId = ref(null)
 const form = reactive(defaultForm())
 const detailRankRewards = computed(() => detailRecord.value?.reward_config?.ranks || [])
+const currentFormPermission = computed(() => (editingId.value ? 'UPDATE_QUEST' : 'CREATE_QUEST'))
+const canSaveCurrentQuest = computed(() => admin.hasPermission(currentFormPermission.value))
+const formPermissionTooltip = computed(() => admin.permissionTitle(currentFormPermission.value))
 
 const columns = [
   { title: 'Title', dataIndex: 'title', key: 'title', ellipsis: true, width: 260 },
@@ -329,11 +354,19 @@ function onTableChange(p) {
 }
 
 function openCreate() {
+  if (!admin.hasPermission('CREATE_QUEST')) {
+    notification.warning({ message: admin.permissionTitle('CREATE_QUEST') })
+    return
+  }
   resetForm()
   formOpen.value = true
 }
 
 function openEdit(record) {
+  if (!canEditQuest(record)) {
+    notification.warning({ message: editTooltip(record) })
+    return
+  }
   resetForm()
   editingId.value = record.id
   const config = record.reward_config || {}
@@ -361,6 +394,9 @@ function openDetail(record) {
 }
 
 function addRankReward() {
+  if (!canSaveCurrentQuest.value) {
+    return
+  }
   const last = form.rankRewards[form.rankRewards.length - 1]
   const from = last ? Number(last.to || last.from || 0) + 1 : 1
   form.rankRewards.push({ from, to: from, coin: 0, star: 0 })
@@ -450,6 +486,10 @@ function buildPayload() {
 }
 
 async function submitForm() {
+  if (!canSaveCurrentQuest.value) {
+    notification.warning({ message: formPermissionTooltip.value })
+    return
+  }
   saving.value = true
   try {
     const payload = buildPayload()
@@ -466,6 +506,20 @@ async function submitForm() {
   } finally {
     saving.value = false
   }
+}
+
+function canEditQuest(record) {
+  return admin.hasPermission('UPDATE_QUEST') && record.status === 'draft'
+}
+
+function editTooltip(record) {
+  if (!admin.hasPermission('UPDATE_QUEST')) {
+    return admin.permissionTitle('UPDATE_QUEST')
+  }
+  if (record.status !== 'draft') {
+    return 'Quest đã mở hoặc đã qua hạn nên không thể chỉnh sửa'
+  }
+  return ''
 }
 
 function rewardSummary(config) {

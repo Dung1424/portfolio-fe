@@ -32,12 +32,15 @@
               <a-tag :color="record.is_active ? 'green' : 'red'">{{ record.is_active ? 'active' : 'locked' }}</a-tag>
             </template>
             <template v-else-if="column.key === 'action'">
-              <a-space size="small">
-                <a-button type="text" class="admin-table-icon-btn" title="Edit" @click="openEdit(record)">
-                  <i class="fa-solid fa-pen-to-square" aria-hidden="true" />
+              <div class="staff-action-group">
+                <a-button type="text" class="staff-action-btn" title="Edit" @click="openEdit(record)">
+                  <i class="fa-regular fa-pen-to-square" aria-hidden="true" />
                 </a-button>
-                <a-button type="text" class="admin-table-icon-btn" title="Reset password" @click="openResetPassword(record)">
+                <a-button type="text" class="staff-action-btn" title="Reset password" @click="openResetPassword(record)">
                   <i class="fa-solid fa-key" aria-hidden="true" />
+                </a-button>
+                <a-button type="text" class="staff-action-btn" title="Permissions" @click="openPermissions(record)">
+                  <i class="fa-solid fa-user-shield" aria-hidden="true" />
                 </a-button>
                 <a-popconfirm
                   :title="record.is_active ? 'Lock this account?' : 'Unlock this account?'"
@@ -45,11 +48,11 @@
                   cancel-text="No"
                   @confirm="toggleLock(record)"
                 >
-                  <a-button type="text" class="admin-table-icon-btn" :title="record.is_active ? 'Lock account' : 'Unlock account'">
+                  <a-button type="text" class="staff-action-btn" :title="record.is_active ? 'Lock account' : 'Unlock account'">
                     <i :class="record.is_active ? 'fa-solid fa-lock' : 'fa-solid fa-lock-open'" aria-hidden="true" />
                   </a-button>
                 </a-popconfirm>
-              </a-space>
+              </div>
             </template>
           </template>
         </a-table>
@@ -103,11 +106,74 @@
         </div>
       </a-form>
     </AdminModal>
+
+    <AdminModal v-model="permissionOpen" title="User permissions" size="xl" @close="resetPermissionForm">
+      <a-spin :spinning="loadingPermissions">
+        <div class="space-y-4">
+          <div class="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+            Account: <strong>{{ permissionTarget?.email }}</strong>
+          </div>
+          <div class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+            Only permissions from this account role are shown. Checked permissions are saved for this account.
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="text-sm text-slate-500">
+              {{ selectedPermissionCodes.length }} / {{ permissions.length }} selected
+            </div>
+            <a-space>
+              <a-button @click="selectAllPermissions">
+                <i class="fa-solid fa-check-double mr-2" aria-hidden="true" />
+                Select all
+              </a-button>
+              <a-button @click="clearAllPermissions">
+                <i class="fa-solid fa-eraser mr-2" aria-hidden="true" />
+                Clear all
+              </a-button>
+            </a-space>
+          </div>
+          <div class="space-y-5">
+            <section
+              v-for="group in groupedPermissions"
+              :key="group.key"
+              class="rounded-xl border border-slate-200 bg-white p-4"
+            >
+              <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 class="text-sm font-semibold text-slate-900">{{ group.label }}</h3>
+                  <p class="mt-0.5 text-xs text-slate-500">{{ groupSelectedCount(group.items) }} / {{ group.items.length }} selected</p>
+                </div>
+                <a-space>
+                  <a-button size="small" @click="selectGroupPermissions(group.items)">Select group</a-button>
+                  <a-button size="small" @click="clearGroupPermissions(group.items)">Clear group</a-button>
+                </a-space>
+              </div>
+              <div class="grid gap-3 md:grid-cols-2">
+                <label
+                  v-for="permission in group.items"
+                  :key="permission.code"
+                  class="flex items-start gap-3 rounded-lg border border-slate-200 p-3"
+                >
+                  <a-checkbox :checked="selectedPermissionCodes.includes(permission.code)" @change="togglePermission(permission.code, $event.target.checked)" />
+                  <span>
+                    <span class="block text-sm font-semibold text-slate-900">{{ permission.name }}</span>
+                    <span class="mt-1 block text-xs text-slate-500">{{ permission.description }}</span>
+                  </span>
+                </label>
+              </div>
+            </section>
+          </div>
+          <div class="flex justify-end gap-3 border-t border-slate-100 pt-4">
+            <a-button @click="permissionOpen = false">Cancel</a-button>
+            <a-button type="primary" :loading="savingPermissions" @click="savePermissions">Save permissions</a-button>
+          </div>
+        </div>
+      </a-spin>
+    </AdminModal>
   </div>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { notification } from 'ant-design-vue'
 import { staffAdminApi } from '~/features/admin/staff/services/staff.api.js'
 import { getErrorMessage } from '~/services/apiEnvelope.js'
@@ -118,10 +184,16 @@ const rows = ref([])
 const loading = ref(false)
 const saving = ref(false)
 const savingPassword = ref(false)
+const loadingPermissions = ref(false)
+const savingPermissions = ref(false)
 const formOpen = ref(false)
 const passwordOpen = ref(false)
+const permissionOpen = ref(false)
 const editingId = ref(null)
 const passwordTarget = ref(null)
+const permissionTarget = ref(null)
+const permissions = ref([])
+const selectedPermissionCodes = ref([])
 const pagination = reactive({ current: 1, pageSize: 20, total: 0, showSizeChanger: true })
 const form = reactive(defaultForm())
 const passwordForm = reactive({ password: '' })
@@ -134,6 +206,27 @@ const columns = [
   { title: 'Joined', dataIndex: 'join_date', key: 'join_date', width: 180 },
   { title: '', key: 'action', width: 160, fixed: 'right' }
 ]
+
+const permissionGroups = [
+  { key: 'dashboard', label: 'Dashboard', prefixes: ['VIEW_DASHBOARD', 'VIEW_STATISTICS'] },
+  { key: 'photos', label: 'Photos', prefixes: ['PHOTO', 'APPROVE_PHOTO', 'REJECT_PHOTO'] },
+  { key: 'catalog', label: 'Catalog', prefixes: ['CATEGORY', 'TAG'] },
+  { key: 'quests', label: 'Quests & Store', prefixes: ['QUEST', 'STORE', 'REDEMPTION'] },
+  { key: 'reports', label: 'Reports', prefixes: ['REPORT'] },
+  { key: 'users', label: 'Users & Staff', prefixes: ['USER', 'STAFF'] },
+  { key: 'content', label: 'Content', prefixes: ['CONTACT', 'BLOG'] },
+  { key: 'account', label: 'Account', prefixes: ['ADMIN_PROFILE', 'ADMIN_PASSWORD'] },
+  { key: 'other', label: 'Other', prefixes: [] }
+]
+
+const groupedPermissions = computed(() => {
+  const groups = permissionGroups.map(group => ({ ...group, items: [] }))
+  for (const permission of permissions.value) {
+    const group = groups.find(item => item.prefixes.some(prefix => permission.code.includes(prefix))) || groups[groups.length - 1]
+    group.items.push(permission)
+  }
+  return groups.filter(group => group.items.length)
+})
 
 function defaultForm() {
   return {
@@ -154,6 +247,11 @@ function resetForm() {
 function resetPasswordForm() {
   passwordTarget.value = null
   passwordForm.password = ''
+}
+
+function resetPermissionForm() {
+  permissionTarget.value = null
+  selectedPermissionCodes.value = []
 }
 
 async function fetchStaff() {
@@ -205,6 +303,62 @@ function openResetPassword(record) {
   resetPasswordForm()
   passwordTarget.value = record
   passwordOpen.value = true
+}
+
+async function openPermissions(record) {
+  resetPermissionForm()
+  permissionTarget.value = record
+  permissionOpen.value = true
+  loadingPermissions.value = true
+  try {
+    const [allResponse, userResponse] = await Promise.all([
+      staffAdminApi.permissions(),
+      staffAdminApi.userPermissions(record.id)
+    ])
+    const rolePermissionCodes = userResponse.data.role_permissions || []
+    const effectivePermissionCodes = userResponse.data.effective_permissions || []
+    permissions.value = (allResponse.data.permissions || [])
+      .filter(permission => rolePermissionCodes.includes(permission.code))
+    selectedPermissionCodes.value = effectivePermissionCodes
+      .filter(code => rolePermissionCodes.includes(code))
+  } catch (error) {
+    notification.error({ message: getErrorMessage(error, 'Failed to load permissions') })
+  } finally {
+    loadingPermissions.value = false
+  }
+}
+
+function togglePermission(code, checked) {
+  if (checked && !selectedPermissionCodes.value.includes(code)) {
+    selectedPermissionCodes.value = [...selectedPermissionCodes.value, code]
+    return
+  }
+  if (!checked) {
+    selectedPermissionCodes.value = selectedPermissionCodes.value.filter(item => item !== code)
+  }
+}
+
+function selectAllPermissions() {
+  selectedPermissionCodes.value = permissions.value.map(permission => permission.code)
+}
+
+function clearAllPermissions() {
+  selectedPermissionCodes.value = []
+}
+
+function selectGroupPermissions(items) {
+  const codes = items.map(permission => permission.code)
+  selectedPermissionCodes.value = Array.from(new Set([...selectedPermissionCodes.value, ...codes]))
+}
+
+function clearGroupPermissions(items) {
+  const codes = new Set(items.map(permission => permission.code))
+  selectedPermissionCodes.value = selectedPermissionCodes.value.filter(code => !codes.has(code))
+}
+
+function groupSelectedCount(items) {
+  const codes = new Set(items.map(permission => permission.code))
+  return selectedPermissionCodes.value.filter(code => codes.has(code)).length
 }
 
 function buildPayload() {
@@ -270,5 +424,61 @@ async function toggleLock(record) {
   }
 }
 
+async function savePermissions() {
+  if (!permissionTarget.value) {
+    return
+  }
+  savingPermissions.value = true
+  try {
+    await staffAdminApi.syncUserPermissions(permissionTarget.value.id, selectedPermissionCodes.value)
+    notification.success({ message: 'Permissions saved' })
+    permissionOpen.value = false
+  } catch (error) {
+    notification.error({ message: getErrorMessage(error, 'Failed to save permissions') })
+  } finally {
+    savingPermissions.value = false
+  }
+}
+
 onMounted(fetchStaff)
 </script>
+
+<style scoped>
+.staff-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+.staff-action-btn.ant-btn {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  color: #64748b;
+  background: transparent;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.staff-action-btn.ant-btn:hover,
+.staff-action-btn.ant-btn:focus-visible {
+  color: #2563eb;
+  background: #eff6ff;
+}
+
+.staff-action-btn.ant-btn:active {
+  transform: translateY(1px);
+}
+
+.staff-action-btn i {
+  font-size: 13px;
+  line-height: 1;
+}
+</style>

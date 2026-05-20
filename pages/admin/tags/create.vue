@@ -5,6 +5,7 @@ import { navigateTo } from '#app'
 definePageMeta({
   layout: 'admin',
   middleware: ['admin-auth'],
+  permission: 'CREATE_TAG',
   title: 'Add tag'
 })
 

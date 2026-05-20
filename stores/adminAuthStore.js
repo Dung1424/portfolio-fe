@@ -67,6 +67,43 @@ export const useAdminAuthStore = defineStore('adminAuth', {
         this.isLoggedIn = false
         await navigateTo('/admin/login')
       }
+    },
+
+    hasRole(role) {
+      const roles = Array.isArray(this.user?.roles) ? this.user.roles : []
+      return roles.includes(role)
+    },
+
+    hasPermission(code) {
+      const permissions = Array.isArray(this.user?.permissions) ? this.user.permissions : []
+      return permissions.includes(code)
+    },
+
+    hasAnyPermission(codes) {
+      return codes.some(code => this.hasPermission(code))
+    },
+
+    permissionTitle(code) {
+      return this.hasPermission(code) ? '' : 'Không có quyền'
+    },
+
+    defaultPath() {
+      const candidates = [
+        ['VIEW_DASHBOARD', '/admin'],
+        ['VIEW_LIST_PHOTO', '/admin/photos'],
+        ['VIEW_PENDING_PHOTO', '/admin/photos/pending'],
+        ['VIEW_CATEGORY', '/admin/categories'],
+        ['VIEW_QUEST', '/admin/quests'],
+        ['MANAGE_STORE_ITEM', '/admin/store'],
+        ['VIEW_REDEMPTION', '/admin/redemptions'],
+        ['VIEW_PHOTO_REPORT', '/admin/reports/photos'],
+        ['VIEW_ACTIVE_USER', '/admin/users'],
+        ['MANAGE_STAFF_ACCOUNT', '/admin/staff'],
+        ['VIEW_CONTACT', '/admin/contacts'],
+        ['VIEW_BLOG', '/admin/blogs'],
+        ['VIEW_ADMIN_PROFILE', '/admin/account/profile']
+      ]
+      return candidates.find(([code]) => this.hasPermission(code))?.[1] || '/admin/account/profile'
     }
   }
 })

@@ -3,6 +3,7 @@ import AdminPage from '~/features/admin/reports/components/ReportsGalleriesPage.
 definePageMeta({
   layout: 'admin',
   middleware: ['admin-auth'],
+  permission: 'VIEW_GALLERY_REPORT',
   title: 'Gallery reports'
 })
 </script>
